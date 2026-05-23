@@ -23,29 +23,76 @@ Skill 方式：用户告诉 AI 需求 → AI 生成非交互式脚本 → 自动
 | ws ONLY | 不需要 | 不需要 | 不需要 | ❌ | 负载均衡 |
 | XTLS ONLY | 不需要 | 不需要 | 不需要 | ❌ | 中转/流量转发 |
 
-## 使用方式
+## 安装
 
-在支持 Skill 的 AI 工具（如 Trae）中，直接对 AI 说：
-
-```
-帮我在服务器上搭建 Xray
-```
-
-AI 会自动：
-
-1. 收集服务器信息和你的偏好（2-3 个问题）
-2. 阅读项目源码理解安装流程
-3. 生成非交互式安装脚本
-4. 通过 SSH 执行安装
-5. 返回 VLESS 链接和客户端配置指南
-
-## 文件结构
+### 方式一：一行命令安装（推荐）
 
 ```
-.
-├── SKILL.md    # Skill 定义文件，AI 读取后获得部署能力
-├── LICENSE     # GPL-3.0
-└── README.md   # 本文件
+npx skills add https://github.com/hello-yunshu/Xray_bash_onekey_skill --skill xray-setup
+```
+
+### 方式二：把下面这段话直接发给 AI
+
+帮我安装 `xray-setup` 这个 Skill。请按下面步骤做：
+
+1. 确保 `~/.claude/skills/` 目录存在（不存在就创建）
+2. 执行 `git clone https://github.com/hello-yunshu/Xray_bash_onekey_skill.git ~/.claude/skills/xray-setup`
+3. 验证：`ls ~/.claude/skills/xray-setup/` 应该看到 `SKILL.md`、`assets/`、`references/` 三项
+4. 告诉我安装好了，之后我说"帮我搭建 Xray"之类的话就会触发这个 Skill
+
+把这段话复制粘贴给 Claude Code / Cursor / 任何有 shell 权限的 AI Agent，它会自动完成安装。
+
+### 方式三：手动命令行
+
+```
+git clone https://github.com/hello-yunshu/Xray_bash_onekey_skill.git ~/.claude/skills/xray-setup
+```
+
+### 触发方式
+
+装好后，AI 会在对话里自动发现并调用这个 Skill。触发关键词：
+
+- "帮我在服务器上搭建 Xray"
+- "部署一个 Reality 协议的代理"
+- "set up Xray on my server"
+- "deploy Xray proxy"
+- "Xray 一键安装"
+
+## 使用流程
+
+Skill 本身是结构化工作流，AI 会逐步引导：
+
+1. **预检** — 验证服务器环境（OS、架构、root 权限、端口可用性）
+2. **需求澄清** — 选择安装模式，收集必要参数（2-3 个问题）
+3. **阅读源码** — AI 读取 install.sh 理解安装流程和函数签名
+4. **生成脚本** — 基于源码理解生成非交互式安装脚本
+5. **执行部署** — 通过 SSH 在服务器上执行
+6. **验证结果** — 对照 checklist 检查 P0 项
+7. **返回信息** — VLESS 链接 + 客户端配置指南 + 安全加固建议
+
+详细说明见 [`SKILL.md`](SKILL.md)。
+
+## 目录结构
+
+```
+xray-setup/
+├── SKILL.md                          ← Skill 主文件：工作流、原则、关键规则
+├── README.md                         ← 本文件
+├── LICENSE                           ← GPL-3.0
+├── assets/
+│   ├── setup-reality.sh              ← Reality 模式安装脚本模板
+│   └── setup-tls.sh                  ← TLS 模式安装脚本模板
+├── references/
+│   ├── checklist.md                  ← 部署质量检查清单（P0/P1/P2/P3 分级）
+│   ├── modes.md                      ← 4 种安装模式详细参考（调用链、变量、参数）
+│   └── troubleshooting.md            ← 故障排查参考（常见问题与解决方案）
+└── i18n/
+    └── languages/
+        ├── en/README.md              ← English
+        ├── fr/README.md              ← Français
+        ├── ru/README.md              ← Русский
+        ├── fa/README.md              ← فارسی
+        └── ko/README.md              ← 한국어
 ```
 
 ## 相关项目

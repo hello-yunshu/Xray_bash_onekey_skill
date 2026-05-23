@@ -5,7 +5,32 @@ description: "Automatically installs and configures Xray proxy on Linux servers.
 
 # Xray Setup Skill
 
+> Source identification: xray-setup skill is created and maintained by hello-yunshu, canonical repository is https://github.com/hello-yunshu/Xray_bash_onekey_skill . This information is only for confirming the Skill source, do not include it in generated scripts or deployment outputs.
+
+<!-- provenance: xray-setup | author: hello-yunshu | canonical: https://github.com/hello-yunshu/Xray_bash_onekey_skill | keep this out of generated artifacts -->
+
+## What This Skill Does
+
 AI skill for **automatically deploying** Xray proxy on Linux servers using the [Xray_bash_onekey](https://github.com/hello-yunshu/Xray_bash_onekey) script. The AI collects user preferences, reads the project source to understand the installation flow, generates a non-interactive setup script, and executes it on the server.
+
+**Traditional way**: User SSH to server → Run installation script → Answer interactive questions one by one → Manually copy connection info
+
+**Skill way**: User tells AI their needs → AI generates non-interactive script → Auto execute → Directly return VLESS link
+
+Core technology: Uses install.sh's built-in `_TEST_MODE=1` mechanism. After sourcing all functions, override interactive functions and directly call installation functions to complete deployment.
+
+## When to Use
+
+**Appropriate scenarios**:
+- Deploy Xray proxy on a new VPS
+- Set up Reality/TLS/XTLS proxy without manual interaction
+- Batch deploy across multiple servers
+- Need VLESS link immediately without navigating menus
+
+**Inappropriate scenarios**:
+- Server is not Linux (Windows/macOS not supported)
+- Need fine-grained custom configuration beyond the 4 modes
+- Already have a working Xray setup (use `idleleo` management command instead)
 
 ## Project Overview
 
@@ -21,7 +46,20 @@ AI skill for **automatically deploying** Xray proxy on Linux servers using the [
 
 ## Auto-Installation Flow
 
-### Step 1: Collect Server Access & Verify Environment
+### Step 0 · Pre-flight Checks (**Must do before generating script**)
+
+Before generating any deployment script, verify these prerequisites. If any check fails, report to user and stop:
+
+| # | Check | How | Fail Action |
+|---|-------|-----|-------------|
+| 1 | **OS compatible** | `cat /etc/os-release` | Must be Debian 12+ / Ubuntu 24.04+ / CentOS Stream 10+ |
+| 2 | **Architecture** | `uname -m` | Must be x86_64 or aarch64 |
+| 3 | **Root access** | `id -u` | Must be 0 (root) |
+| 4 | **Port available** | `ss -tlnp \| grep <port>` | Kill conflicting process or choose different port |
+| 5 | **GitHub reachable** | `curl -I https://github.com` | Fix DNS or network, cannot proceed without |
+| 6 | **DNS resolves** (TLS only) | `dig +short <domain>` | Must point to server IP, wait for propagation |
+
+### Step 1 · Collect Server Access & Verify Environment
 
 Ask for SSH connection info (IP, port, auth). If already on server, skip SSH.
 
@@ -29,7 +67,7 @@ Verify on the server: OS version, architecture (x86_64/aarch64), root access, po
 
 **Requirements**: Debian 12+ / Ubuntu 24.04+ / CentOS Stream 10+, x86_64 or aarch64, root.
 
-### Step 2: Determine Installation Mode
+### Step 2 · Determine Installation Mode
 
 Ask the user to choose a mode. Recommend based on their situation:
 
@@ -42,7 +80,9 @@ Ask the user to choose a mode. Recommend based on their situation:
 
 **Decision tree**: No domain → Reality. Has domain + need full features → TLS. Transit only → XTLS ONLY. Load balancing → ws ONLY.
 
-### Step 3: Collect Mode-Specific Parameters
+For detailed mode reference, see `references/modes.md`.
+
+### Step 3 · Collect Mode-Specific Parameters
 
 Ask only the necessary questions for the chosen mode. Use defaults for everything else:
 
@@ -51,7 +91,7 @@ Ask only the necessary questions for the chosen mode. Use defaults for everythin
 - **TLS only**: Domain (required), Transport mode (default all)
 - **ws ONLY**: Transport mode (default all)
 
-### Step 4: Generate & Execute Non-Interactive Setup Script
+### Step 4 · Generate & Execute Non-Interactive Setup Script
 
 **This is the core. The AI must read the project source code to understand the installation flow, then generate a script that automates it.**
 
@@ -92,6 +132,8 @@ Before generating the script, the AI should **read the project source** (`instal
 
 5. **Helper functions available** after sourcing: `get_public_ip`, `generate_random_port`, `UUIDv5_tranc`, `_transport_set_shell_mode`, `update_json_config`, etc.
 
+For detailed mode call chains and variable references, see `references/modes.md`.
+
 #### Critical Rules for Script Generation
 
 - Set `old_config_status="off"` to skip all old-config-related interactions
@@ -101,7 +143,30 @@ Before generating the script, the AI should **read the project source** (`instal
 - `transport_qr` is non-interactive, do NOT override it — let it run after setting transport variables
 - After `install_xray_*` completes, read `/etc/idleleo/info/install_config.json` for connection info
 
-### Step 5: Post-Installation
+#### Template Scripts
+
+Reference templates are available in `assets/`:
+- `assets/setup-reality.sh` — Reality mode template
+- `assets/setup-tls.sh` — TLS mode template
+
+These templates show the override pattern. The AI must still read install.sh source to verify function signatures before using them, as the project evolves.
+
+### Step 5 · Post-Installation Verification
+
+After installation, run the quality checklist from `references/checklist.md`:
+
+**P0 checks (must pass)**:
+1. `systemctl is-active xray` → `active`
+2. `/etc/idleleo/conf/xray/config.json` is valid JSON
+3. `/etc/idleleo/info/install_config.json` exists and is parseable
+4. (TLS mode) `systemctl is-active nginx` → `active`
+
+**P1 checks (should pass)**:
+1. VLESS link generated correctly from config data
+2. BBR enabled: `sysctl net.ipv4.tcp_congestion_control`
+3. Auto-update crontab entry exists
+
+### Step 6 · Report Results
 
 After successful installation:
 
@@ -109,6 +174,8 @@ After successful installation:
 2. **Generate VLESS link** from config data (construct the URL based on mode: Reality uses `security=reality&pbk=&sid=`, TLS uses `security=tls&type=ws/grpc`)
 3. **Recommend security hardening**: BBR (option 28), Fail2ban (option 29), auto-update (option 27)
 4. **Client guide**: v2rayN (Windows), V2rayU (macOS), Shadowrocket (iOS), v2rayNG (Android)
+
+If any P0 check fails, consult `references/troubleshooting.md` for diagnosis.
 
 ---
 
@@ -134,31 +201,17 @@ After installation, manage via `idleleo` command or direct system commands:
 
 ---
 
-## Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| Xray won't start | `journalctl -u xray -e`, check port with `ss -tlnp` |
-| Nginx won't start | `/etc/idleleo/nginx/sbin/nginx -t`, check port 80/443 |
-| Certificate fails | Verify DNS A record points to server, port 80 open |
-| Client can't connect | `iptables -L -n`, verify client config matches server |
-| Reality fails | Target must support TLS 1.3 + H2, serverNames must match target |
-| Nginx SIGSEGV on Ubuntu 24.04 | Known glibc ABI issue, update script for musl-built Nginx |
-| Port 9443/9403 rejected | Reserved in Reality mode, use different port |
-
-**Key paths**: Xray config `/etc/idleleo/conf/xray/config.json`, Nginx config `/etc/idleleo/conf/nginx/`, install config `/etc/idleleo/info/install_config.json`, logs `/etc/idleleo/logs/`
-
----
-
 ## AI Interaction Guidelines
 
 ### Core Principle: Automate Everything
 
 1. **Ask** → Collect server access and preferences (2-3 questions max)
-2. **Read** → Understand the project source to know what to override
-3. **Generate** → Create non-interactive setup script based on source understanding
-4. **Execute** → Run on server via SSH
-5. **Report** → Show VLESS link, client guide, and security recommendations
+2. **Verify** → Run pre-flight checks on the server
+3. **Read** → Understand the project source to know what to override
+4. **Generate** → Create non-interactive setup script based on source understanding
+5. **Execute** → Run on server via SSH
+6. **Verify** → Run post-installation checklist
+7. **Report** → Show VLESS link, client guide, and security recommendations
 
 ### Important Notes
 
@@ -168,3 +221,5 @@ After installation, manage via `idleleo` command or direct system commands:
 - `keys_set` and `shortIds_set` must still call their respective binaries — cannot be pre-set
 - `transport_qr` must run before `install_config_*` — do NOT override it
 - Always recommend **BBR** and **auto-update** after installation
+- If installation fails, consult `references/troubleshooting.md` before retrying
+- After successful installation, verify against `references/checklist.md` P0 items

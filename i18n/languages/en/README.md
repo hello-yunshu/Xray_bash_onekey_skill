@@ -23,29 +23,76 @@ Core technology: Uses install.sh's built-in `_TEST_MODE=1` mechanism. After sour
 | ws ONLY | No | No | No | ❌ | Load balancing |
 | XTLS ONLY | No | No | No | ❌ | Transit/relay |
 
-## Usage
+## Install
 
-In an AI tool that supports Skills (like Trae), simply tell the AI:
-
-```
-Help me set up Xray on my server
-```
-
-The AI will automatically:
-
-1. Collect server info and preferences (2-3 questions)
-2. Read project source code to understand the installation flow
-3. Generate a non-interactive setup script
-4. Execute via SSH
-5. Return VLESS link and client configuration guide
-
-## File Structure
+### Option 1: One-line command (Recommended)
 
 ```
-.
-├── SKILL.md    # Skill definition file, AI reads this to gain deployment capability
-├── LICENSE     # GPL-3.0
-└── README.md   # This file
+npx skills add https://github.com/hello-yunshu/Xray_bash_onekey_skill --skill xray-setup
+```
+
+### Option 2: Send this message to AI
+
+Help me install the `xray-setup` Skill. Follow these steps:
+
+1. Make sure `~/.claude/skills/` directory exists (create it if not)
+2. Run `git clone https://github.com/hello-yunshu/Xray_bash_onekey_skill.git ~/.claude/skills/xray-setup`
+3. Verify: `ls ~/.claude/skills/xray-setup/` should show `SKILL.md`, `assets/`, `references/`
+4. Tell me it's installed, and I'll be able to trigger this Skill by saying "help me set up Xray"
+
+Copy and paste this message to Claude Code / Cursor / any AI Agent with shell access, and it will install automatically.
+
+### Option 3: Manual command line
+
+```
+git clone https://github.com/hello-yunshu/Xray_bash_onekey_skill.git ~/.claude/skills/xray-setup
+```
+
+### Trigger
+
+Once installed, the AI will automatically discover and invoke this Skill. Trigger keywords:
+
+- "Help me set up Xray on my server"
+- "Deploy a Reality protocol proxy"
+- "set up Xray proxy"
+- "deploy Xray proxy"
+- "Xray one-click install"
+
+## Usage Flow
+
+The Skill is a structured workflow. The AI will guide you through:
+
+1. **Pre-flight** — Verify server environment (OS, architecture, root access, port availability)
+2. **Requirements** — Choose installation mode, collect necessary parameters (2-3 questions)
+3. **Read source** — AI reads install.sh to understand installation flow and function signatures
+4. **Generate script** — Create non-interactive setup script based on source understanding
+5. **Deploy** — Execute on server via SSH
+6. **Verify** — Check P0 items against checklist
+7. **Report** — VLESS link + client configuration guide + security hardening recommendations
+
+See [`SKILL.md`](/SKILL.md) for details.
+
+## Directory Structure
+
+```
+xray-setup/
+├── SKILL.md                          ← Skill definition: workflow, principles, critical rules
+├── README.md                         ← This file
+├── LICENSE                           ← GPL-3.0
+├── assets/
+│   ├── setup-reality.sh              ← Reality mode setup script template
+│   └── setup-tls.sh                  ← TLS mode setup script template
+├── references/
+│   ├── checklist.md                  ← Deployment quality checklist (P0/P1/P2/P3 graded)
+│   ├── modes.md                      ← 4 installation modes detailed reference (call chains, variables, parameters)
+│   └── troubleshooting.md            ← Troubleshooting reference (common issues and solutions)
+└── i18n/
+    └── languages/
+        ├── en/README.md              ← English
+        ├── fr/README.md              ← Français
+        ├── ru/README.md              ← Русский
+        ├── fa/README.md              ← فارسی
+        └── ko/README.md              ← 한국어
 ```
 
 ## Related Projects
