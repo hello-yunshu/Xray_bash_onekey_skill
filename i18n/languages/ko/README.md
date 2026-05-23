@@ -23,29 +23,76 @@
 | ws ONLY | 아니요 | 아니요 | 아니요 | ❌ | 로드 밸런싱 |
 | XTLS ONLY | 아니요 | 아니요 | 아니요 | ❌ | 트랜짓/릴레이 |
 
-## 사용 방법
+## 설치
 
-스킬을 지원하는 AI 도구(예: Trae)에서 AI에게 간단히 말합니다:
+### 방법 1: 한 줄 명령어 (권장)
 
 ```
-서버에 Xray 설정 도와주세요
+npx skills add https://github.com/hello-yunshu/Xray_bash_onekey_skill --skill xray-setup
 ```
 
-AI는 자동으로:
+### 방법 2: AI에게 이 메시지를 보내세요
 
-1. 서버 정보와 사용자 선호도 수집(2-3개의 질문)
-2. 설치 흐름을 이해하기 위해 프로젝트 소스 코드 읽기
-3. 비상호작용 설정 스크립트 생성
-4. SSH를 통해 실행
-5. VLESS 링크와 클라이언트 설정 가이드 반환
+`xray-setup` 스킬을 설치해 주세요. 다음 단계를 따라주세요:
+
+1. `~/.claude/skills/` 디렉토리가 있는지 확인하세요 (없으면 생성)
+2. `git clone https://github.com/hello-yunshu/Xray_bash_onekey_skill.git ~/.claude/skills/xray-setup` 실행
+3. 확인: `ls ~/.claude/skills/xray-setup/` 에서 `SKILL.md`, `assets/`, `references/` 가 보여야 합니다
+4. 설치가 완료되면 알려주세요. "Xray 설정 도와줘"라고 말하면 이 스킬이 활성화됩니다
+
+이 메시지를 Claude Code / Cursor / 쉘 접근 권한이 있는 AI 에이전트에 복사하여 붙여넣으면 자동으로 설치됩니다.
+
+### 방법 3: 수동 명령줄
+
+```
+git clone https://github.com/hello-yunshu/Xray_bash_onekey_skill.git ~/.claude/skills/xray-setup
+```
+
+### 트리거
+
+설치 후 AI가 자동으로 이 스킬을 발견하고 호출합니다. 트리거 키워드:
+
+- "서버에 Xray 설정 도와주세요"
+- "Reality 프로토콜 프록시 배포"
+- "set up Xray proxy"
+- "deploy Xray proxy"
+- "Xray 원클릭 설치"
+
+## 사용 흐름
+
+스킬은 구조화된 워크플로우입니다. AI가 다음 단계로 안내합니다:
+
+1. **사전 확인** — 서버 환경 확인 (OS, 아키텍처, 루트 접근, 포트 가용성)
+2. **요구사항** — 설치 모드 선택, 필요한 매개변수 수집 (2-3개 질문)
+3. **소스 읽기** — AI가 install.sh를 읽어 설치 흐름과 함수 시그니처 이해
+4. **스크립트 생성** — 소스 이해를 기반으로 비상호작용 설정 스크립트 생성
+5. **배포** — SSH를 통해 서버에서 실행
+6. **검증** — 체크리스트의 P0 항목 확인
+7. **보고** — VLESS 링크 + 클라이언트 설정 가이드 + 보안 강화 권장 사항
+
+자세한 내용은 [`SKILL.md`](/SKILL.md)를 참조하세요.
 
 ## 파일 구조
 
 ```
-.
-├── SKILL.md    # 스킬 정의 파일, AI가 이 파일을 읽어 배포 기능을 획득
-├── LICENSE     # GPL-3.0
-└── README.md   # 이 파일
+xray-setup/
+├── SKILL.md                          ← 스킬 메인 파일: 워크플로우, 원칙, 핵심 규칙
+├── README.md                         ← 이 파일
+├── LICENSE                           ← GPL-3.0
+├── assets/
+│   ├── setup-reality.sh              ← Reality 모드 설치 스크립트 템플릿
+│   └── setup-tls.sh                  ← TLS 모드 설치 스크립트 템플릿
+├── references/
+│   ├── checklist.md                  ← 배포 품질 체크리스트 (P0/P1/P2/P3 등급)
+│   ├── modes.md                      ← 4가지 설치 모드 상세 참조 (호출 체인, 변수, 매개변수)
+│   └── troubleshooting.md            ← 문제 해결 참조 (일반적인 문제 및 해결 방법)
+└── i18n/
+    └── languages/
+        ├── en/README.md              ← English
+        ├── fr/README.md              ← Français
+        ├── ru/README.md              ← Русский
+        ├── fa/README.md              ← فارسی
+        └── ko/README.md              ← 한국어
 ```
 
 ## 관련 프로젝트
