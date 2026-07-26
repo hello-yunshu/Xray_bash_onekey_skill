@@ -7,6 +7,14 @@
 #   2. Replace all <PLACEHOLDER> values with actual user preferences
 #   3. Adjust override functions if the source has changed
 #
+# Contract-verified against install.sh v2.12.10+:
+#   - install_config.json path: /etc/idleleo/conf/install_config.json (NOT /etc/idleleo/info/)
+#   - Nginx binary path: /usr/local/nginx/sbin/nginx
+#   - UUIDv5_tranc requires an argument (random UUIDv5 char string)
+#   - Reality key variables: privateKey, password (NOT private_key/public_key)
+#   - xray x25519 output format: "PrivateKey: xxx\nPassword: yyy" or "PublicKey: yyy"
+#   - ip_check sets: local_ip, ip_version (NOT IP)
+#
 # Usage: bash setup-reality.sh
 #
 
@@ -34,6 +42,7 @@ curl -fsSL "${INSTALL_SH_URL}" -o "${INSTALL_SH}"
 
 echo "[2/5] Sourcing install.sh with _TEST_MODE=1..."
 export _TEST_MODE=1
+# shellcheck source=/dev/null
 source "${INSTALL_SH}"
 
 # ============================================================
@@ -45,8 +54,15 @@ old_config_exist_check() {
 }
 
 ip_check() {
-    IP="$(get_public_ip)"
-    echo "  Server IP: ${IP}"
+    # Contract: real ip_check sets local_ip + ip_version (NOT IP).
+    # Default to IPv4; override here if IPv6 is required.
+    ip_version="IPv4"
+    local_ip="$(get_public_ip "${ip_version}")"
+    if [[ -z "${local_ip}" ]]; then
+        echo "  ❌ Failed to get public IP"
+        return 1
+    fi
+    echo "  Server IP (${ip_version}): ${local_ip}"
 }
 
 port_set() {
@@ -58,8 +74,12 @@ email_set() {
 }
 
 UUID_set() {
+    # Contract: UUIDv5_tranc requires an argument (random char string).
+    # An empty call returns immediately with no output, producing an invalid UUID.
     if [[ -z "${UUID}" ]]; then
-        UUID="$(UUIDv5_tranc)"
+        local uuid5_char
+        uuid5_char="$(head -n 10 /dev/urandom | md5sum | head -c ${random_num})"
+        UUID="$(UUIDv5_tranc "${uuid5_char}")"
     fi
     echo "  UUID: ${UUID}"
 }
@@ -73,17 +93,31 @@ serverNames_set() {
 }
 
 keys_set() {
-    local key_output
-    key_output="$(${xray_bin_dir}/xray x25519)"
-    private_key="$(echo "${key_output}" | grep "Private key" | awk '{print $3}')"
-    public_key="$(echo "${key_output}" | grep "Public key" | awk '{print $3}')"
-    echo "  Private Key: ${private_key}"
-    echo "  Public Key: ${public_key}"
+    # Contract: xray x25519 output is "PrivateKey: <key>\nPassword: <key>"
+    # (or "PublicKey:" in some versions). Variable names in install.sh are
+    # `privateKey` (camelCase) and `password` (NOT public_key).
+    # Use the project-provided parse_reality_public_key helper for compatibility.
+    local keys
+    keys="$(${xray_bin_dir}/xray x25519)"
+    privateKey="$(printf '%s\n' "${keys}" | awk -F"PrivateKey: " '{print $2}' | awk '{print $1}')"
+    password="$(parse_reality_public_key "${keys}")"
+    if [[ -z "${privateKey}" || -z "${password}" ]]; then
+        echo "  ❌ Failed to generate Reality keys"
+        return 1
+    fi
+    echo "  privateKey: ${privateKey}"
+    echo "  publicKey (password): ${password}"
 }
 
 shortIds_set() {
-    shortIds="$(openssl rand -hex 8)"
-    echo "  Short ID: ${shortIds}"
+    # Contract: install.sh uses generate_reality_short_id helper when available,
+    # fallback to openssl rand -hex 8. shortIds must be 16 hex chars.
+    if command -v generate_reality_short_id >/dev/null 2>&1; then
+        shortIds="$(generate_reality_short_id)"
+    else
+        shortIds="$(openssl rand -hex 8)"
+    fi
+    echo "  shortIds: ${shortIds}"
 }
 
 xray_reality_add_more_choose() {
@@ -115,10 +149,11 @@ else
 fi
 
 echo "[5/5] Connection info:"
-if [[ -f /etc/idleleo/info/install_config.json ]]; then
-    cat /etc/idleleo/info/install_config.json
+# Contract: install_config.json is at /etc/idleleo/conf/ (NOT /etc/idleleo/info/).
+if [[ -f /etc/idleleo/conf/install_config.json ]]; then
+    cat /etc/idleleo/conf/install_config.json
 else
-    echo "  ❌ install_config.json not found"
+    echo "  ❌ install_config.json not found at /etc/idleleo/conf/"
 fi
 
 # Cleanup

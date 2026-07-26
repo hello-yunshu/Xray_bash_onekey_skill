@@ -40,11 +40,13 @@ Load balancing? → ws ONLY
 |-----------|---------|---------------------|-------------------|
 | Port | 443 | `port_set` | `port="443"` |
 | Email | auto | `email_set` | `email="auto@generated"` |
-| UUID | auto | `UUID_set` | `UUID="$(UUIDv5_tranc)"` |
+| UUID | auto | `UUID_set` | `UUID5_char="$(head -n 10 /dev/urandom \| md5sum \| head -c ${random_num})"; UUID="$(UUIDv5_tranc "${UUID5_char}")"` |
 | Target | www.microsoft.com | `target_set` | `target="www.microsoft.com"` |
 | ServerNames | target domain | `serverNames_set` | `serverNames="${target}"` |
-| Private Key | auto (xray x25519) | `keys_set` | Must call `${xray_bin_dir}/xray x25519` |
-| Short ID | auto (openssl) | `shortIds_set` | Must call `openssl rand -hex 8` |
+| Private Key | auto (xray x25519) | `keys_set` | Must call `${xray_bin_dir}/xray x25519` and set `privateKey` (camelCase) + `password` (NOT public_key) |
+| Short ID | auto (openssl) | `shortIds_set` | Must call `openssl rand -hex 8` or `generate_reality_short_id`; sets `shortIds` |
+
+> Contract note (Task D): `UUIDv5_tranc` REQUIRES an argument — `UUIDv5_tranc` with no argument returns immediately and produces an empty UUID. Always pass a random char string. The Reality key output uses `privateKey` (camelCase) and `password` (which holds the public key); `parse_reality_public_key` helper should be used to remain compatible across Xray versions.
 
 ### Optional Parameters
 | Parameter | Default | Interactive Function | Notes |
@@ -108,18 +110,22 @@ vless://UUID@IP:PORT?security=reality&pbk=PUBLIC_KEY&sid=SHORT_ID&type=tcp&flow=
 ### Required Parameters
 | Parameter | Default | Interactive Function | Override Must Set |
 |-----------|---------|---------------------|-------------------|
-| Domain | (required) | `domain_check` | `domain="example.com"` |
+| Domain | (required) | `domain_check` | `domain="example.com"` (also requires `local_ip` to be set by `ip_check` override) |
 | Port | 443 | `port_set` | `port="443"` |
 | Email | auto | `email_set` | `email="auto@generated"` |
-| UUID | auto | `UUID_set` | `UUID="$(UUIDv5_tranc)"` |
-| Transport mode | all | `transport_choose` | `transport_mode="all"` / `"onlyws"` / `"onlygRPC"` / `"onlyxhttp"` |
+| UUID | auto | `UUID_set` | `UUID5_char="..."; UUID="$(UUIDv5_tranc "${UUID5_char}")"` (requires argument) |
+| Transport mode | wsgRPCxhttp | `transport_choose` | `transport_mode="wsgRPCxhttp"` / `"onlyws"` / `"onlygRPC"` / `"onlyxhttp"` / `"wsxhttp"` |
+
+> Contract note (Task D): There is NO `"all"` transport_mode value — use `"wsgRPCxhttp"` for ws+gRPC+xHTTP. Other valid combinations: `onlyws`, `onlygRPC`, `onlyxhttp`, `wsxhttp`. After setting `transport_mode`, call `_transport_set_shell_mode` to update `shell_mode`.
 
 ### Transport-Specific Parameters
-| Transport | Port Function | Path Function | Default Port | Default Path |
-|-----------|--------------|---------------|-------------|-------------|
-| WebSocket | `ws_inbound_port_set` | `ws_path_set` | auto | auto |
-| gRPC | `grpc_inbound_port_set` | `grpc_path_set` | auto | auto |
-| xHTTP | `xhttp_inbound_port_set` | `xhttp_path_set` | auto | auto |
+| Transport | Port Function | Path Function | Port Variable | Path Variable | Default Port Range |
+|-----------|--------------|---------------|---------------|---------------|-------------|
+| WebSocket | `ws_inbound_port_set` | `ws_path_set` | `xport` | `path` | 10000-10999 |
+| gRPC | `grpc_inbound_port_set` | `grpc_path_set` | `gport` | `serviceName` | 10000-10999 |
+| xHTTP | `xhttp_inbound_port_set` | `xhttp_path_set` | `xhttpport` | `xhttppath` | 11000-11999 |
+
+> Contract note (Task D): Variable names differ from intuitive names. Use `xport`/`gport`/`xhttpport` (NOT `ws_port`/`grpc_port`/`xhttp_port`). Use `path`/`serviceName`/`xhttppath` (NOT `ws_path`/`grpc_path`/`xhttp_path`). `generate_random_port` REQUIRES min/max arguments.
 
 ### Install Function Call Chain
 ```
@@ -206,7 +212,7 @@ install_xray_ws_only
 |-----------|---------|----------|
 | Port | 443 | `port="443"` |
 | Email | auto | `email="auto@generated"` |
-| UUID | auto | `UUID="$(UUIDv5_tranc)"` |
+| UUID | auto | `UUID5_char="..."; UUID="$(UUIDv5_tranc "${UUID5_char}")"` (requires argument) |
 
 ### Install Function Call Chain
 ```
@@ -247,28 +253,53 @@ vless://UUID@IP:PORT?security=tls&type=tcp&flow=xtls-rprx-vision#REMARK
 
 ## Transport Mode Values
 
-Used by `transport_choose` override:
+Used by `transport_choose` override. **There is NO `"all"` value** — use `wsgRPCxhttp` for the previous "all" behaviour:
 
 | Value | Protocols Enabled | Nginx Upstreams |
 |-------|------------------|-----------------|
-| `all` | ws + gRPC + xHTTP | All 3 upstream blocks |
 | `onlyws` | ws only | ws upstream only |
 | `onlygRPC` | gRPC only | gRPC upstream only |
 | `onlyxhttp` | xHTTP only | xHTTP upstream only |
+| `wsxhttp` | ws + xHTTP | ws + xHTTP upstreams |
+| `wsgRPCxhttp` | ws + gRPC + xHTTP | All 3 upstream blocks |
+
+After setting `transport_mode`, always call `_transport_set_shell_mode` to update `shell_mode` accordingly.
 
 ## Key Variables Reference
 
-Variables that override functions must set (read from install.sh source to verify):
+Variables that override functions must set (read from install.sh source to verify). **Variable names use camelCase and short forms, NOT intuitive snake_case**:
 
 | Variable | Set By | Used By |
 |----------|--------|---------|
 | `old_config_status` | `old_config_exist_check` override | Multiple functions |
-| `IP` | `ip_check` override | Config generation |
+| `local_ip` | `ip_check` override | Config generation (host field for Reality/ws-only/XTLS-only) |
+| `ip_version` | `ip_check` override | Config generation |
+| `domain` | `domain_check` override | TLS config (host field for TLS mode) |
 | `port` | `port_set` override | Xray + Nginx config |
 | `email` | `email_set` override | acme.sh certificate |
-| `UUID` | `UUID_set` override | Xray config |
+| `UUID` | `UUID_set` override | Xray config (requires `UUIDv5_tranc "<arg>"`) |
 | `target` | `target_set` override | Reality config |
 | `serverNames` | `serverNames_set` override | Reality config |
+| `privateKey` | `keys_set` override | Reality config (camelCase, NOT private_key) |
+| `password` | `keys_set` override | Reality config (holds public key, NOT publicKey/public_key) |
+| `shortIds` | `shortIds_set` override | Reality config (camelCase) |
 | `transport_mode` | `transport_choose` override | Xray + Nginx config |
-| `ws_port` / `grpc_port` / `xhttp_port` | Port set overrides | Xray config |
-| `ws_path` / `grpc_path` / `xhttp_path` | Path set overrides | Xray + Nginx config |
+| `xport` | `ws_inbound_port_set` override | Xray config (NOT ws_port) |
+| `gport` | `grpc_inbound_port_set` override | Xray config (NOT grpc_port) |
+| `xhttpport` | `xhttp_inbound_port_set` override | Xray config (NOT xhttp_port) |
+| `path` | `ws_path_set` override | Xray + Nginx config (NOT ws_path) |
+| `serviceName` | `grpc_path_set` override | Xray + Nginx config (NOT grpc_path) |
+| `xhttppath` | `xhttp_path_set` override | Xray + Nginx config (NOT xhttp_path) |
+
+## Key Paths Reference
+
+| Resource | Path |
+|----------|------|
+| install_config.json | `/etc/idleleo/conf/install_config.json` (NOT `/etc/idleleo/info/`) |
+| Xray binary | `/usr/local/bin/xray` (`${xray_bin_dir}/xray`) |
+| Xray config | `/etc/idleleo/conf/xray/config.json` (`${xray_conf}`) |
+| Nginx binary | `/usr/local/nginx/sbin/nginx` (`${nginx_dir}/sbin/nginx`, NOT `/etc/idleleo/nginx/sbin/`) |
+| Nginx config dir | `/etc/idleleo/conf/nginx/` (`${nginx_conf_dir}`) |
+| Xray conf dir | `/etc/idleleo/conf/xray/` (`${xray_conf_dir}`) |
+| idleleo root | `/etc/idleleo/` (`${idleleo_dir}`) |
+| conf root | `/etc/idleleo/conf/` (`${idleleo_conf_dir}`) |
