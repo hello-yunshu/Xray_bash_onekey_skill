@@ -138,10 +138,16 @@ For detailed mode call chains and variable references, see `references/modes.md`
 
 - Set `old_config_status="off"` to skip all old-config-related interactions
 - Override `firewall_set` as no-op — user can configure later via `idleleo`
-- `keys_set` override must still call `${xray_bin_dir}/xray x25519` — keys cannot be pre-set
-- `shortIds_set` override must still call `openssl rand -hex 8`
+- `keys_set` override must still call `${xray_bin_dir}/xray x25519` — keys cannot be pre-set. Use the project's `parse_reality_public_key` helper to handle Xray version differences. Variables are `privateKey` (camelCase) and `password` (which holds the public key), NOT `private_key`/`public_key`.
+- `shortIds_set` override must still call `openssl rand -hex 8` (or `generate_reality_short_id` if available)
+- `UUID_set` override must pass an argument to `UUIDv5_tranc` — `UUIDv5_tranc` with no argument returns empty. Generate a random char string first: `UUID5_char="$(head -n 10 /dev/urandom | md5sum | head -c ${random_num})"`.
 - `transport_qr` is non-interactive, do NOT override it — let it run after setting transport variables
-- After `install_xray_*` completes, read `/etc/idleleo/info/install_config.json` for connection info
+- After `install_xray_*` completes, read `/etc/idleleo/conf/install_config.json` for connection info (path is `conf/`, NOT `info/`)
+- `transport_mode` accepts onlyws/onlygRPC/onlyxhttp/wsxhttp/wsgRPCxhttp — there is NO `"all"` value
+- `ip_check` override must set `local_ip` and `ip_version` (NOT `IP`)
+- Inbound port overrides must set `xport`/`gport`/`xhttpport` (NOT `ws_port`/`grpc_port`/`xhttp_port`)
+- Path overrides must set `path`/`serviceName`/`xhttppath` (NOT `ws_path`/`grpc_path`/`xhttp_path`)
+- `generate_random_port` requires min/max arguments
 
 #### Template Scripts
 
@@ -158,7 +164,7 @@ After installation, run the quality checklist from `references/checklist.md`:
 **P0 checks (must pass)**:
 1. `systemctl is-active xray` → `active`
 2. `/etc/idleleo/conf/xray/config.json` is valid JSON
-3. `/etc/idleleo/info/install_config.json` exists and is parseable
+3. `/etc/idleleo/conf/install_config.json` exists and is parseable (path is `conf/`, NOT `info/`)
 4. (TLS mode) `systemctl is-active nginx` → `active`
 
 **P1 checks (should pass)**:
@@ -170,7 +176,7 @@ After installation, run the quality checklist from `references/checklist.md`:
 
 After successful installation:
 
-1. **Retrieve connection info**: `cat /etc/idleleo/info/install_config.json`
+1. **Retrieve connection info**: `cat /etc/idleleo/conf/install_config.json` (NOT `/etc/idleleo/info/`)
 2. **Generate VLESS link** from config data (construct the URL based on mode: Reality uses `security=reality&pbk=&sid=`, TLS uses `security=tls&type=ws/grpc`)
 3. **Recommend security hardening**: BBR (option 28), Fail2ban (option 29), auto-update (option 27)
 4. **Client guide**: v2rayN (Windows), V2rayU (macOS), Shadowrocket (iOS), v2rayNG (Android)
@@ -185,7 +191,7 @@ After installation, manage via `idleleo` command or direct system commands:
 
 | Task | Menu Option | Direct Command |
 |------|-------------|---------------|
-| View connection info | 18 | `cat /etc/idleleo/info/install_config.json` |
+| View connection info | 18 | `cat /etc/idleleo/conf/install_config.json` |
 | Restart services | 20 | `systemctl restart xray nginx` |
 | Service status | 23 | `systemctl status xray nginx` |
 | View access logs | 16 | `journalctl -u xray -f` |
