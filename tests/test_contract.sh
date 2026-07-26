@@ -272,6 +272,96 @@ assert_grep_in_file 'parse_reality_public_key\(\)' "${INSTALL_SH}" \
     "install.sh defines parse_reality_public_key helper"
 
 # ----------------------------------------------------------------
+# Section 12: JSON field contract and parseability (Task D, Section 8.4)
+# Verify that JSON field names used by update_json_config in install.sh
+# are consistent with Skill template documentation, and that a mock
+# install_config.json with those fields parses with jq.
+# ----------------------------------------------------------------
+echo ""
+echo "--- Section 12: JSON field contract and parseability ---"
+
+# 12a. install.sh uses these JSON field names in update_json_config calls
+#      Fields can be passed via --arg (string) or --argjson (number/null).
+_JSON_FIELDS=("port" "ws_port" "grpc_port" "xhttp_port" "path" "serviceName"
+              "privateKey" "publicKey" "serverNames" "target"
+              "uuid" "shell_version" "xray_version")
+for _field in "${_JSON_FIELDS[@]}"; do
+    if grep -qE -- "--arg(json)?[[:space:]]+${_field}[[:space:]]" "${INSTALL_SH}" 2>/dev/null; then
+        ok "install.sh update_json_config uses field: ${_field}"
+    else
+        bad "install.sh update_json_config missing field: ${_field} (grep --arg(json) ${_field} in ${INSTALL_SH})"
+    fi
+done
+
+# 12b. Skill templates reference the same JSON field names in their documentation
+#      (modes.md and setup-*.sh must mention at least port/ws_port/grpc_port/xhttp_port)
+for _field in "port" "ws_port" "grpc_port" "xhttp_port"; do
+    _found=0
+    for _f in "${SKILL_REPO_ROOT}/references/modes.md" \
+              "${SKILL_REPO_ROOT}/assets/setup-reality.sh" \
+              "${SKILL_REPO_ROOT}/assets/setup-tls.sh"; do
+        if grep -qE -- "\\b${_field}\\b" "$_f" 2>/dev/null; then
+            _found=1
+            break
+        fi
+    done
+    if [[ ${_found} -eq 1 ]]; then
+        ok "Skill references JSON field: ${_field}"
+    else
+        bad "Skill does not reference JSON field: ${_field}"
+    fi
+done
+
+# 12c. Construct a mock install_config.json with the contract fields and verify jq parses it
+_MOCK_JSON=$(mktemp)
+cat > "${_MOCK_JSON}" <<'EOF'
+{
+  "shell_version": "3.0.0",
+  "xray_version": "25.12.8",
+  "host": "example.com",
+  "domain": "example.com",
+  "port": 443,
+  "ws_port": 10001,
+  "grpc_port": 10002,
+  "xhttp_port": 10003,
+  "path": "/ws",
+  "serviceName": "grpc-service",
+  "xhttppath": "/xhttp",
+  "uuid": "test-uuid-string",
+  "privateKey": "test-private-key",
+  "publicKey": "test-public-key",
+  "password": "test-password",
+  "shortIds": "abcdef12",
+  "serverNames": "www.example.com",
+  "target": "www.example.com"
+}
+EOF
+if command -v jq >/dev/null 2>&1; then
+    if jq empty "${_MOCK_JSON}" >/dev/null 2>&1; then
+        ok "Mock install_config.json is valid JSON (jq empty)"
+    else
+        bad "Mock install_config.json failed jq empty validation"
+    fi
+    # 12d. Verify key fields are non-empty and non-null
+    _null_count=$(jq '[paths(scalars) as $p | select(getpath($p) == null or getpath($p) == "")] | length' "${_MOCK_JSON}" 2>/dev/null || echo 1)
+    if [[ "${_null_count}" == "0" ]]; then
+        ok "Mock install_config.json has no null/empty values"
+    else
+        bad "Mock install_config.json has ${_null_count} null/empty values"
+    fi
+    # 12e. Verify specific field types (port must be number)
+    _port_type=$(jq -r '.port | type' "${_MOCK_JSON}" 2>/dev/null || echo "")
+    if [[ "${_port_type}" == "number" ]]; then
+        ok "Mock install_config.json port field is number type"
+    else
+        bad "Mock install_config.json port field should be number, got ${_port_type}"
+    fi
+else
+    skip "jq not available — skipping JSON parse validation"
+fi
+rm -f "${_MOCK_JSON}"
+
+# ----------------------------------------------------------------
 # Cleanup
 # ----------------------------------------------------------------
 if [[ "${FETCHED:-0}" == "1" ]]; then
