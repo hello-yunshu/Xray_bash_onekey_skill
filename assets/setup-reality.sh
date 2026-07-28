@@ -151,7 +151,34 @@ xray_reality_add_more_choose() {
     transport_mode="None"
 }
 
+spiderx_set() {
+    # Non-interactive: generate spiderx path silently (value is part of VLESS link).
+    if [[ "${old_config_status}" != "on" ]]; then
+        spiderx_path="$(generate_spiderx)"
+    fi
+}
+
+reality_balance_add_fq() {
+    # Non-interactive: skip load balancing setup.
+    reality_add_balance="off"
+}
+
+reality_nginx_add_fq() {
+    # Non-interactive: skip additional Nginx setup for Reality.
+    reality_add_nginx="off"
+}
+
 firewall_set() {
+    :
+}
+
+auto_update() {
+    # Non-interactive: skip auto-update cron setup in template mode.
+    :
+}
+
+vless_link_image_choice() {
+    # Non-interactive: skip VLESS link/image generation (may print secrets).
     :
 }
 
