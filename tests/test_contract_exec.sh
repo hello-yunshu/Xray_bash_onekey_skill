@@ -92,14 +92,14 @@ WRAPPER_SCRIPT=$(mktemp /tmp/xray_skill_exec_test_XXXXXX.sh)
     echo ''
     echo '# Extract email_set override from setup-reality.sh'
     echo 'source_setup_reality_overrides() {'
-    sed -n '/^# ===.*Override interactive/,/^# ===.*Execute installation/p' "${SKILL_REPO_ROOT}/assets/setup-reality.sh" \
-        | head -n -1
+    awk '/^# Override interactive functions/{copy=1} /^# Execute installation/{copy=0} copy' \
+        "${SKILL_REPO_ROOT}/assets/setup-reality.sh"
     echo '}'
     echo ''
     echo '# Extract email_set override from setup-tls.sh'
     echo 'source_setup_tls_overrides() {'
-    sed -n '/^# ===.*Override interactive/,/^# ===.*Execute installation/p' "${SKILL_REPO_ROOT}/assets/setup-tls.sh" \
-        | head -n -1
+    awk '/^# Override interactive functions/{copy=1} /^# Execute installation/{copy=0} copy' \
+        "${SKILL_REPO_ROOT}/assets/setup-tls.sh"
     echo '}'
     echo ''
     echo '# Test 3: email_set from reality template'
@@ -110,7 +110,7 @@ WRAPPER_SCRIPT=$(mktemp /tmp/xray_skill_exec_test_XXXXXX.sh)
     echo '    if [[ "${custom_email:-}" == "test@reality.example" ]]; then'
     echo '        echo "PASS: custom_email set correctly by reality template email_set"'
     echo '    else'
-    echo '        echo "FAIL: custom_email not set correctly (got: ${custom_email:-}")"'
+    echo '        echo "FAIL: custom_email not set correctly (got: ${custom_email:-})"'
     echo '    fi'
     echo '    if [[ -n "${email:-}" ]]; then'
     echo '        echo "FAIL: email variable should NOT be set by template"'
@@ -127,7 +127,7 @@ WRAPPER_SCRIPT=$(mktemp /tmp/xray_skill_exec_test_XXXXXX.sh)
     echo '    if [[ "${custom_email:-}" == "test@tls.example" ]]; then'
     echo '        echo "PASS: custom_email set correctly by TLS template email_set"'
     echo '    else'
-    echo '        echo "FAIL: custom_email not set correctly (got: ${custom_email:-}")"'
+    echo '        echo "FAIL: custom_email not set correctly (got: ${custom_email:-})"'
     echo '    fi'
     echo '}'
     echo ''
@@ -138,7 +138,7 @@ WRAPPER_SCRIPT=$(mktemp /tmp/xray_skill_exec_test_XXXXXX.sh)
     echo '    if [[ "${reality_add_more:-}" == "off" ]]; then'
     echo '        echo "PASS: reality_add_more set to off"'
     echo '    else'
-    echo '        echo "FAIL: reality_add_more not set to off (got: ${reality_add_more:-}")"'
+    echo '        echo "FAIL: reality_add_more not set to off (got: ${reality_add_more:-})"'
     echo '    fi'
     echo '    if [[ "${transport_mode:-}" == "None" ]]; then'
     echo '        echo "PASS: transport_mode set to None"'
@@ -180,7 +180,7 @@ WRAPPER_SCRIPT=$(mktemp /tmp/xray_skill_exec_test_XXXXXX.sh)
     echo '    local result'
     echo ''
     echo '    # Format 1: "PrivateKey: xxx\nPassword: yyy"'
-    echo '    result=$(parse_reality_public_key "PrivateKey: AAA\nPassword: BBB")'
+    echo '    result=$(parse_reality_public_key $'"'"'PrivateKey: AAA\nPassword: BBB'"'"')'
     echo '    if [[ "${result}" == "BBB" ]]; then'
     echo '        echo "PASS: parse_reality_public_key handles Password: format"'
     echo '    else'
@@ -211,9 +211,9 @@ WRAPPER_SCRIPT=$(mktemp /tmp/xray_skill_exec_test_XXXXXX.sh)
     echo ''
     echo '    # Set fake secret values and call override functions'
     echo '    local FAKE_UUID="fake-uuid-1234-5678"'
-    echo '    local FAKE_PRIVATE_KEY="FAKE_PRIVATE_KEY_xyz789"'
+    echo '    export FAKE_PRIVATE_KEY="FAKE_PRIVATE_KEY_xyz789"'
     echo '    local FAKE_SHORT_IDS="0123456789abcdef"'
-    echo '    local FAKE_PASSWORD="FAKE_PASSWORD_abc123"'
+    echo '    export FAKE_PASSWORD="FAKE_PASSWORD_abc123"'
     echo ''
     echo '    # Capture output from UUID_set (should NOT contain the UUID value)'
     echo '    UUID="${FAKE_UUID}"'
@@ -285,15 +285,27 @@ WRAPPER_SCRIPT=$(mktemp /tmp/xray_skill_exec_test_XXXXXX.sh)
 
 # Run the wrapper script and capture output
 echo "  Running wrapper script..."
-EXEC_OUTPUT=$(bash "${WRAPPER_SCRIPT}" 2>&1 || true)
-echo "${EXEC_OUTPUT}" | while IFS= read -r line; do
+EXEC_OUTPUT=$(bash "${WRAPPER_SCRIPT}" 2>&1)
+EXEC_STATUS=$?
+DYNAMIC_RESULTS=0
+while IFS= read -r line; do
     case "${line}" in
-        PASS:*) ok "${line#PASS: }" ;;
-        FAIL:*) bad "${line#FAIL: }" ;;
-        SKIP:*) skip "${line#SKIP: }" ;;
+        PASS:*) DYNAMIC_RESULTS=$((DYNAMIC_RESULTS + 1)); ok "${line#PASS: }" ;;
+        FAIL:*) DYNAMIC_RESULTS=$((DYNAMIC_RESULTS + 1)); bad "${line#FAIL: }" ;;
+        SKIP:*) DYNAMIC_RESULTS=$((DYNAMIC_RESULTS + 1)); skip "${line#SKIP: }" ;;
         *) ;;
     esac
-done
+done <<< "${EXEC_OUTPUT}"
+
+if [[ ${EXEC_STATUS} -ne 0 ]]; then
+    bad "execution wrapper exited non-zero (${EXEC_STATUS})"
+    printf '%s\n' "${EXEC_OUTPUT}" | sed 's/^/      wrapper: /'
+fi
+if [[ ${DYNAMIC_RESULTS} -lt 12 ]]; then
+    bad "execution wrapper produced only ${DYNAMIC_RESULTS} contract results"
+else
+    ok "execution wrapper produced ${DYNAMIC_RESULTS} real contract results"
+fi
 
 rm -f "${WRAPPER_SCRIPT}"
 

@@ -209,7 +209,7 @@ fi
 echo ""
 echo "ℹ️  Full connection info (including VLESS link) is available on the server via:"
 echo "    idleleo  (option 18 to view connection info)"
-echo "    cat ${CONFIG_FILE}  (contains secrets — use only in a trusted environment)"
+echo "    Only reveal it interactively in a trusted terminal."
 
 # Cleanup
 rm -f "${INSTALL_SH}"
