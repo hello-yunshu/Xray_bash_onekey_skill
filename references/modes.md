@@ -39,7 +39,7 @@ Load balancing? → ws ONLY
 | Parameter | Default | Interactive Function | Override Must Set |
 |-----------|---------|---------------------|-------------------|
 | Port | 443 | `port_set` | `port="443"` |
-| Email | auto | `email_set` | `email="auto@generated"` |
+| Email | auto | `email_set` | `custom_email="auto@generated"` (variable is `custom_email`, NOT `email`) |
 | UUID | auto | `UUID_set` | `UUID5_char="$(head -n 10 /dev/urandom \| md5sum \| head -c ${random_num})"; UUID="$(UUIDv5_tranc "${UUID5_char}")"` |
 | Target | www.microsoft.com | `target_set` | `target="www.microsoft.com"` |
 | ServerNames | target domain | `serverNames_set` | `serverNames="${target}"` |
@@ -51,9 +51,9 @@ Load balancing? → ws ONLY
 ### Optional Parameters
 | Parameter | Default | Interactive Function | Notes |
 |-----------|---------|---------------------|-------|
-| Add ws/gRPC | No | `xray_reality_add_more_choose` | Adds Nginx + ws/gRPC transport |
-| Add Nginx | No | `reality_nginx_add_fq` | Only if add_more chosen |
-| Load balance | No | `reality_balance_add_fq` | Only if add_more chosen |
+| Add ws/gRPC | No | `xray_reality_add_more_choose` | Sets `reality_add_more` (NOT `add_more`); sets `transport_mode` (NOT `ws_grpc_mode`) |
+| Add Nginx | No | `reality_nginx_add_fq` | Only if `reality_add_more` chosen |
+| Load balance | No | `reality_balance_add_fq` | Only if `reality_add_more` chosen |
 
 ### Install Function Call Chain
 ```
@@ -67,13 +67,13 @@ install_xray_reality
   ├── ip_check                ← override: set IP variables
   ├── xray_install
   ├── port_set                ← override: set port
-  ├── email_set               ← override: set email
+  ├── email_set               ← override: set `custom_email` (NOT `email`)
   ├── UUID_set                ← override: set UUID
   ├── target_set              ← override: set target
   ├── serverNames_set         ← override: set serverNames
   ├── keys_set                ← ⚠️ MUST still call xray x25519
   ├── shortIds_set            ← ⚠️ MUST still call openssl rand
-  ├── xray_reality_add_more_choose  ← override: set add_more choice
+  ├── xray_reality_add_more_choose  ← override: set `reality_add_more` (NOT `add_more`)
   ├── transport_qr            ← ❌ DO NOT override, let it run
   ├── firewall_set            ← override: no-op
   ├── stop_service_all
@@ -112,7 +112,7 @@ vless://UUID@IP:PORT?security=reality&pbk=PUBLIC_KEY&sid=SHORT_ID&type=tcp&flow=
 |-----------|---------|---------------------|-------------------|
 | Domain | (required) | `domain_check` | `domain="example.com"` (also requires `local_ip` to be set by `ip_check` override) |
 | Port | 443 | `port_set` | `port="443"` |
-| Email | auto | `email_set` | `email="auto@generated"` |
+| Email | auto | `email_set` | `custom_email="auto@generated"` (variable is `custom_email`, NOT `email`) |
 | UUID | auto | `UUID_set` | `UUID5_char="..."; UUID="$(UUIDv5_tranc "${UUID5_char}")"` (requires argument) |
 | Transport mode | wsgRPCxhttp | `transport_choose` | `transport_mode="wsgRPCxhttp"` / `"onlyws"` / `"onlygRPC"` / `"onlyxhttp"` / `"wsxhttp"` |
 
@@ -140,7 +140,7 @@ install_xray_ws_tls
   ├── domain_check            ← override: set domain, verify DNS
   ├── xray_install
   ├── port_set                ← override: set port
-  ├── email_set               ← override: set email
+  ├── email_set               ← override: set `custom_email` (NOT `email`)
   ├── UUID_set                ← override: set UUID
   ├── transport_choose        ← override: set transport_mode
   ├── ws_inbound_port_set     ← override (if ws enabled)
@@ -211,7 +211,7 @@ install_xray_ws_only
 | Parameter | Default | Override |
 |-----------|---------|----------|
 | Port | 443 | `port="443"` |
-| Email | auto | `email="auto@generated"` |
+| Email | auto | `custom_email="auto@generated"` (NOT `email`) |
 | UUID | auto | `UUID5_char="..."; UUID="$(UUIDv5_tranc "${UUID5_char}")"` (requires argument) |
 
 ### Install Function Call Chain
@@ -226,9 +226,9 @@ install_xray_xtls_only
   ├── ip_check
   ├── xray_install
   ├── port_set
-  ├── email_set
+  ├── email_set               ← override: set `custom_email` (NOT `email`)
   ├── UUID_set
-  ├── transport_qr            ← ❌ DO NOT override
+  ├── transport_qr            ← ❌ DO NOT override, let it run
   ├── firewall_set
   ├── stop_service_all
   ├── port_exist_check
@@ -276,7 +276,7 @@ Variables that override functions must set (read from install.sh source to verif
 | `ip_version` | `ip_check` override | Config generation |
 | `domain` | `domain_check` override | TLS config (host field for TLS mode) |
 | `port` | `port_set` override | Xray + Nginx config |
-| `email` | `email_set` override | acme.sh certificate |
+| `custom_email` | `email_set` override | acme.sh certificate (NOT `email`) |
 | `UUID` | `UUID_set` override | Xray config (requires `UUIDv5_tranc "<arg>"`) |
 | `target` | `target_set` override | Reality config |
 | `serverNames` | `serverNames_set` override | Reality config |
@@ -290,6 +290,54 @@ Variables that override functions must set (read from install.sh source to verif
 | `path` | `ws_path_set` override | Xray + Nginx config (NOT ws_path) |
 | `serviceName` | `grpc_path_set` override | Xray + Nginx config (NOT grpc_path) |
 | `xhttppath` | `xhttp_path_set` override | Xray + Nginx config (NOT xhttp_path) |
+
+## Secret Redaction Contract
+
+> Contract note (P0-D): Templates MUST NOT output secrets to stdout/stderr.
+
+The following variables and files contain secrets and MUST NOT be echoed or catted directly in generated scripts:
+
+| Secret | Variable / Path | Reason |
+|--------|-----------------|--------|
+| Reality private key | `privateKey` | Server identity — compromise allows impersonation |
+| Reality public key | `password` / `publicKey` | Used in VLESS link — compromise allows link reconstruction |
+| Reality short ID | `shortIds` | Used in VLESS link — compromise allows link reconstruction |
+| User UUID | `UUID` | User identity — compromise allows traffic correlation |
+| User email | `custom_email` | PII — used for certificate registration |
+| Server IP | `local_ip` | Server location — compromise allows targeting |
+| Full config | `/etc/idleleo/conf/install_config.json` | Contains all of the above secrets in JSON |
+| Raw logs | `journalctl -u xray -e` | May contain secrets in error messages |
+
+### Safe Output Patterns
+
+Override functions should confirm success WITHOUT echoing the value:
+
+```bash
+# ❌ BAD — leaks secret to stdout/logs
+echo "  UUID: ${UUID}"
+echo "  privateKey: ${privateKey}"
+cat /etc/idleleo/conf/install_config.json
+journalctl -u xray -e --no-pager
+
+# ✅ GOOD — confirms generation without leaking value
+echo "  UUID: generated (value suppressed for safety)"
+echo "  Reality keys: generated (values suppressed for safety)"
+```
+
+### Safe Diagnostics
+
+When installation fails, use redaction helpers before output:
+
+```bash
+# Source redaction helpers from the main repo
+source .github/test/redact.sh
+
+# Safe config summary (no secrets)
+safe_print_config_summary /etc/idleleo/conf/install_config.json
+
+# Safe log output (vless links, keys, tokens redacted)
+journalctl -u xray -e --no-pager | redact_text_for_diagnostics
+```
 
 ## Key Paths Reference
 
