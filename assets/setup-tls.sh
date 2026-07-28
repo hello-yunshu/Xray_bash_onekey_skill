@@ -174,6 +174,16 @@ firewall_set() {
     :
 }
 
+auto_update() {
+    # Non-interactive: skip auto-update cron setup in template mode.
+    :
+}
+
+vless_link_image_choice() {
+    # Non-interactive: skip VLESS link/image generation (may print secrets).
+    :
+}
+
 # ============================================================
 # Execute installation
 # ============================================================
