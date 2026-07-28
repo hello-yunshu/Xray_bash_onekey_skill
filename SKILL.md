@@ -138,16 +138,21 @@ For detailed mode call chains and variable references, see `references/modes.md`
 
 - Set `old_config_status="off"` to skip all old-config-related interactions
 - Override `firewall_set` as no-op — user can configure later via `idleleo`
-- `keys_set` override must still call `${xray_bin_dir}/xray x25519` — keys cannot be pre-set. Use the project's `parse_reality_public_key` helper to handle Xray version differences. Variables are `privateKey` (camelCase) and `password` (which holds the public key), NOT `private_key`/`public_key`.
-- `shortIds_set` override must still call `openssl rand -hex 8` (or `generate_reality_short_id` if available)
-- `UUID_set` override must pass an argument to `UUIDv5_tranc` — `UUIDv5_tranc` with no argument returns empty. Generate a random char string first: `UUID5_char="$(head -n 10 /dev/urandom | md5sum | head -c ${random_num})"`.
+- `keys_set` override must still call `${xray_bin_dir}/xray x25519` — keys cannot be pre-set. Use the project's `parse_reality_public_key` helper to handle Xray version differences. Variables are `privateKey` (camelCase) and `password` (which holds the public key), NOT `private_key`/`public_key`. **Do NOT echo `privateKey` or `password` to stdout — they are secrets.**
+- `shortIds_set` override must still call `openssl rand -hex 8` (or `generate_reality_short_id` if available). **Do NOT echo `shortIds` to stdout — it is a secret.**
+- `UUID_set` override must pass an argument to `UUIDv5_tranc` — `UUIDv5_tranc` with no argument returns empty. Generate a random char string first: `UUID5_char="$(head -n 10 /dev/urandom | md5sum | head -c ${random_num})"`. **Do NOT echo the full UUID value to stdout — confirm generation without leaking the value.**
 - `transport_qr` is non-interactive, do NOT override it — let it run after setting transport variables
-- After `install_xray_*` completes, read `/etc/idleleo/conf/install_config.json` for connection info (path is `conf/`, NOT `info/`)
+- After `install_xray_*` completes, read `/etc/idleleo/conf/install_config.json` for connection info (path is `conf/`, NOT `info/`). **Do NOT `cat` the full config to stdout — it contains UUID, privateKey, password, shortIds, host, and other secrets. Use `safe_print_config_summary` from `.github/test/redact.sh` instead.**
 - `transport_mode` accepts onlyws/onlygRPC/onlyxhttp/wsxhttp/wsgRPCxhttp — there is NO `"all"` value
 - `ip_check` override must set `local_ip` and `ip_version` (NOT `IP`)
 - Inbound port overrides must set `xport`/`gport`/`xhttpport` (NOT `ws_port`/`grpc_port`/`xhttp_port`)
 - Path overrides must set `path`/`serviceName`/`xhttppath` (NOT `ws_path`/`grpc_path`/`xhttp_path`)
 - `generate_random_port` requires min/max arguments
+- `email_set` override must set `custom_email` (NOT `email`) — the variable name in install.sh is `custom_email`
+- `xray_reality_add_more_choose` override must set `reality_add_more` (NOT `add_more`) and `transport_mode` (NOT `ws_grpc_mode`) — these are the correct variable names in install.sh
+- **Secret redaction**: Templates must NOT output `privateKey`, `password`, `shortIds`, `UUID` values, or the full `install_config.json` to stdout/stderr. Use `safe_print_config_summary` from `.github/test/redact.sh` for safe diagnostics. For `journalctl` output, pipe through `redact_text_for_diagnostics`.
+- **Syntax check**: After downloading `install.sh`, always run `bash -n "$INSTALL_SH"` before sourcing it to catch syntax errors early.
+- **Ref pinning**: Templates support pinning to a specific commit SHA via the `INSTALL_SH_REF` environment variable (default: `main`). Using a commit SHA provides immutability for reproducible deployments.
 
 #### Template Scripts
 
@@ -176,7 +181,7 @@ After installation, run the quality checklist from `references/checklist.md`:
 
 After successful installation:
 
-1. **Retrieve connection info**: `cat /etc/idleleo/conf/install_config.json` (NOT `/etc/idleleo/info/`)
+1. **Retrieve connection info**: Use `safe_print_config_summary /etc/idleleo/conf/install_config.json` from `.github/test/redact.sh` to get a safe summary (no secrets). For full connection info, use `idleleo` → option 18 on the server. **Do NOT `cat` the full config in CI logs or untrusted environments — it contains UUID, privateKey, password, shortIds, and other secrets.**
 2. **Generate VLESS link** from config data (construct the URL based on mode: Reality uses `security=reality&pbk=&sid=`, TLS uses `security=tls&type=ws/grpc`)
 3. **Recommend security hardening**: BBR (option 28), Fail2ban (option 29), auto-update (option 27)
 4. **Client guide**: v2rayN (Windows), V2rayU (macOS), Shadowrocket (iOS), v2rayNG (Android)
@@ -191,7 +196,7 @@ After installation, manage via `idleleo` command or direct system commands:
 
 | Task | Menu Option | Direct Command |
 |------|-------------|---------------|
-| View connection info | 18 | `cat /etc/idleleo/conf/install_config.json` |
+| View connection info | 18 | `idleleo` → 18 (safe on server) or `safe_print_config_summary /etc/idleleo/conf/install_config.json` (redacted) |
 | Restart services | 20 | `systemctl restart xray nginx` |
 | Service status | 23 | `systemctl status xray nginx` |
 | View access logs | 16 | `journalctl -u xray -f` |
