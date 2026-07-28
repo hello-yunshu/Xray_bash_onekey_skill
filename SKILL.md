@@ -199,8 +199,8 @@ After installation, manage via `idleleo` command or direct system commands:
 | View connection info | 18 | `idleleo` → 18 (safe on server) or `safe_print_config_summary /etc/idleleo/conf/install_config.json` (redacted) |
 | Restart services | 20 | `systemctl restart xray nginx` |
 | Service status | 23 | `systemctl status xray nginx` |
-| View access logs | 16 | `journalctl -u xray -f` |
-| View error logs | 17 | `journalctl -u xray -e` |
+| View access logs | 16 | Use menu option 16; redact before copying into shared output |
+| View error logs | 17 | Use menu option 17; pipe manual output through `redact_text_for_diagnostics` |
 | Add/remove user | 14/15 | `idleleo` → 14/15 |
 | Change UUID/port | 7/8 | `idleleo` → 7/8 |
 | Update Xray/script | 1/0 | `idleleo` → 1/0 |

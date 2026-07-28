@@ -155,19 +155,19 @@ xhttp_inbound_port_set() {
 ws_path_set() {
     # Contract: variable is `path` (NOT ws_path).
     path="$(head -n 10 /dev/urandom | md5sum | head -c ${random_num})"
-    echo "  ws path: ${path}"
+    echo "  ws path: generated (value suppressed for safety)"
 }
 
 grpc_path_set() {
     # Contract: variable is `serviceName` (NOT grpc_path).
     serviceName="$(head -n 10 /dev/urandom | md5sum | head -c ${random_num})"
-    echo "  gRPC serviceName: ${serviceName}"
+    echo "  gRPC serviceName: generated (value suppressed for safety)"
 }
 
 xhttp_path_set() {
     # Contract: variable is `xhttppath` (NOT xhttp_path).
     xhttppath="$(head -n 10 /dev/urandom | md5sum | head -c ${random_num})"
-    echo "  xHTTP path: ${xhttppath}"
+    echo "  xHTTP path: generated (value suppressed for safety)"
 }
 
 firewall_set() {
@@ -236,7 +236,7 @@ fi
 echo ""
 echo "ℹ️  Full connection info (including VLESS link) is available on the server via:"
 echo "    idleleo  (option 18 to view connection info)"
-echo "    cat ${CONFIG_FILE}  (contains secrets — use only in a trusted environment)"
+echo "    Only reveal it interactively in a trusted terminal."
 
 # Cleanup
 rm -f "${INSTALL_SH}"
