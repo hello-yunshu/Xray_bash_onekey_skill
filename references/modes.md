@@ -351,3 +351,50 @@ journalctl -u xray -e --no-pager | redact_text_for_diagnostics
 | Xray conf dir | `/etc/idleleo/conf/xray/` (`${xray_conf_dir}`) |
 | idleleo root | `/etc/idleleo/` (`${idleleo_dir}`) |
 | conf root | `/etc/idleleo/conf/` (`${idleleo_conf_dir}`) |
+
+---
+
+## Hierarchical Install Profiles (v2.13+)
+
+The install wizard now uses a hierarchical menu: **protocol main class → deployment method → optional components**. The interactive menu sets an `install_profile` and calls `apply_install_profile` to configure all variables upfront, so interactive functions (`transport_choose`, `xray_reality_add_more_choose`, `reality_nginx_add_fq`, `reality_balance_add_fq`) skip their prompts when `install_wizard_preset="on"`.
+
+### Profile Values
+
+| Profile | tls_mode | transport_mode | reality_add_more | reality_add_nginx | reality_add_balance | Install Function |
+|---------|----------|----------------|------------------|-------------------|---------------------|------------------|
+| `reality_nginx` | Reality | None | off | on | off | `install_xray_reality` |
+| `reality_standard` | Reality | None | off | off | off | `install_xray_reality` |
+| `reality_transport` | Reality | (set by menu) | on | off | off | `install_xray_reality` |
+| `reality_transport_nginx` | Reality | (set by menu) | on | on | off | `install_xray_reality` |
+| `reality_balance` | Reality | (set by balance flow) | off | off | on | `install_xray_reality` |
+| `transport_nginx_tls` | TLS | (set by menu) | off | off | off | `install_xray_ws_tls` |
+| `transport_only` | None | (set by menu) | off | off | off | `install_xray_ws_only` |
+| `xtls_only` | XTLS | None | off | off | off | `install_xray_xtls_only` |
+
+### Skill Templates and Profiles
+
+Skill templates do NOT need to use `install_profile` or `install_wizard_preset`. They override the interactive functions directly, which takes precedence over the preset mechanism. The profile system is only used by the interactive menu. Skill templates remain fully non-interactive by:
+
+1. Overriding `transport_choose`, `xray_reality_add_more_choose`, `reality_nginx_add_fq`, `reality_balance_add_fq` with functions that set variables directly
+2. Setting `old_config_status="off"` to skip config-read prompts
+3. Calling the real install function (e.g., `install_xray_reality`) which uses the pre-set variables
+
+### Menu Structure
+
+```
+安装向导 (Install Wizard)
+├── 1. Reality
+│   ├── 1. Reality + Nginx 前置保护 (recommended)
+│   ├── 2. 标准 Reality
+│   ├── 3. Reality + ws/gRPC/xHTTP
+│   ├── 4. Reality + ws/gRPC/xHTTP + Nginx
+│   └── 5. Reality 负载均衡 (advanced)
+├── 2. ws/gRPC/xHTTP
+│   ├── 1. Nginx + TLS (recommended)
+│   └── 2. ONLY: 无 Nginx、无 TLS (advanced)
+└── 3. XTLS ONLY (advanced)
+```
+
+### Safety: No Auto-Uninstall of Existing Nginx
+
+When a profile sets `reality_add_nginx="off"`, the `_skip_reality_nginx_install` function is called. This function does NOT uninstall existing Nginx — it only prints a skip message. Users who want to remove Nginx must do so explicitly through the uninstall menu option.
