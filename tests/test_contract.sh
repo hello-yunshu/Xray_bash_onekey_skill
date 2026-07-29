@@ -18,7 +18,7 @@ set -uo pipefail
 
 # Resolve repo paths
 SKILL_REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-MAIN_REPO_ROOT="${SKILL_REPO_ROOT}/../Xray_bash_onekey"
+MAIN_REPO_ROOT="${MAIN_REPO_ROOT:-${1:-${SKILL_REPO_ROOT}/../Xray_bash_onekey}}"
 INSTALL_SH="${MAIN_REPO_ROOT}/install.sh"
 
 PASS=0
