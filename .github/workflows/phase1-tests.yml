@@ -1,0 +1,57 @@
+name: Phase 1 Tests
+
+on:
+  push:
+    branches:
+      - main
+      - work/phase1-optimization
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      main_ref:
+        description: Main repository ref
+        required: false
+        default: main
+
+concurrency:
+  group: phase1-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Skill repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Checkout compatible main repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: hello-yunshu/Xray_bash_onekey
+          ref: ${{ inputs.main_ref || (github.ref_name == 'work/phase1-optimization' && github.ref_name) || 'main' }}
+          path: .phase1-main
+
+      - name: Validate shell sources
+        run: |
+          set -euo pipefail
+          bash -n assets/setup-reality.sh
+          bash -n assets/setup-tls.sh
+          bash -n tests/test_contract.sh
+          bash -n tests/test_contract_exec.sh
+          bash -n tests/test_full_flow_noninteractive.sh
+          shellcheck -S error \
+            assets/setup-reality.sh \
+            assets/setup-tls.sh \
+            tests/test_contract.sh \
+            tests/test_contract_exec.sh \
+            tests/test_full_flow_noninteractive.sh
+
+      - name: Run Skill contract tests
+        env:
+          MAIN_REPO_ROOT: ${{ github.workspace }}/.phase1-main
+        run: |
+          set -euo pipefail
+          bash tests/test_contract.sh
+          bash tests/test_contract_exec.sh
+          bash tests/test_full_flow_noninteractive.sh
