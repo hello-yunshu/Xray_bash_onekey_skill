@@ -161,6 +161,9 @@ spiderx_set() {
 reality_balance_add_fq() {
     # Non-interactive: skip load balancing setup.
     reality_add_balance="off"
+    # Explicitly clear balance role so the standard Reality template never
+    # inherits a stale primary/secondary value from a prior install state.
+    reality_balance_role=""
 }
 
 reality_nginx_add_fq() {
