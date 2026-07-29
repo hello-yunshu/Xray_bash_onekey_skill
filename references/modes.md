@@ -360,16 +360,20 @@ The install wizard now uses a hierarchical menu: **protocol main class → deplo
 
 ### Profile Values
 
-| Profile | tls_mode | transport_mode | reality_add_more | reality_add_nginx | reality_add_balance | Install Function |
-|---------|----------|----------------|------------------|-------------------|---------------------|------------------|
-| `reality_nginx` | Reality | None | off | on | off | `install_xray_reality` |
-| `reality_standard` | Reality | None | off | off | off | `install_xray_reality` |
-| `reality_transport` | Reality | (set by menu) | on | off | off | `install_xray_reality` |
-| `reality_transport_nginx` | Reality | (set by menu) | on | on | off | `install_xray_reality` |
-| `reality_balance` | Reality | (set by balance flow) | off | off | on | `install_xray_reality` |
-| `transport_nginx_tls` | TLS | (set by menu) | off | off | off | `install_xray_ws_tls` |
-| `transport_only` | None | (set by menu) | off | off | off | `install_xray_ws_only` |
-| `xtls_only` | XTLS | None | off | off | off | `install_xray_xtls_only` |
+| Profile | tls_mode | transport_mode | reality_add_more | reality_add_nginx | reality_add_balance | reality_balance_role | Install Function |
+|---------|----------|----------------|------------------|-------------------|---------------------|----------------------|------------------|
+| `reality_nginx` | Reality | None | off | on | off | (empty) | `install_xray_reality` |
+| `reality_standard` | Reality | None | off | off | off | (empty) | `install_xray_reality` |
+| `reality_transport` | Reality | (set by menu) | on | off | off | (empty) | `install_xray_reality` |
+| `reality_transport_nginx` | Reality | (set by menu) | on | on | off | (empty) | `install_xray_reality` |
+| `reality_balance_primary` | Reality | None | off | on | on | primary | `install_xray_reality` |
+| `reality_balance_secondary` | Reality | None | off | off | on | secondary | `install_xray_reality` |
+| `transport_nginx_tls` | TLS | (set by menu) | off | off | off | (empty) | `install_xray_ws_tls` |
+| `transport_only` | None | (set by menu) | off | off | off | (empty) | `install_xray_ws_only` |
+| `xtls_only` | XTLS | None | off | off | off | (empty) | `install_xray_xtls_only` |
+
+`reality_balance_primary` installs the Nginx front-end + upstream (calls `_apply_reality_nginx_install`).
+`reality_balance_secondary` only provides the Reality backend and does NOT uninstall an existing Nginx (calls `_skip_reality_nginx_install`).
 
 ### Skill Templates and Profiles
 
