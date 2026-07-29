@@ -151,12 +151,11 @@ assert_grep_in_file 'generate_random_port\(\)[^}]*local min="\$1"|local max="\$2
     "generate_random_port requires min and max arguments"
 
 # Skill templates must NOT call generate_random_port with no argument
-for f in "${SKILL_REPO_ROOT}/assets/setup-tls.sh"; do
-    assert_not_grep_in_file 'generate_random_port\)' "$f" \
-        "$f does NOT call generate_random_port with no argument"
-    assert_grep_in_file 'generate_random_port [0-9]+ [0-9]+' "$f" \
-        "$f passes min/max to generate_random_port"
-done
+f="${SKILL_REPO_ROOT}/assets/setup-tls.sh"
+assert_not_grep_in_file 'generate_random_port\)' "$f" \
+    "$f does NOT call generate_random_port with no argument"
+assert_grep_in_file 'generate_random_port [0-9]+ [0-9]+' "$f" \
+    "$f passes min/max to generate_random_port"
 
 # ----------------------------------------------------------------
 # Section 6: transport_mode valid values
@@ -203,28 +202,26 @@ assert_grep_in_file '\bpassword=.*parse_reality_public_key|password=\$\(parse_re
 # is present (above). The Skill templates must NOT use private_key/public_key at all (checked below).
 
 # Skill templates must use the correct variable names
-for f in "${SKILL_REPO_ROOT}/assets/setup-tls.sh"; do
-    assert_grep_in_file '\bxport=' "$f" "$f uses xport"
-    assert_grep_in_file '\bgport=' "$f" "$f uses gport"
-    assert_grep_in_file '\bxhttpport=' "$f" "$f uses xhttpport"
-    assert_grep_in_file '\bpath=' "$f" "$f uses path (ws path)"
-    assert_grep_in_file '\bserviceName=' "$f" "$f uses serviceName (gRPC path)"
-    assert_grep_in_file '\bxhttppath=' "$f" "$f uses xhttppath"
-    assert_not_grep_in_file '\bws_port=' "$f" "$f does NOT use ws_port"
-    assert_not_grep_in_file '\bgrpc_port=' "$f" "$f does NOT use grpc_port"
-    assert_not_grep_in_file '\bxhttp_port=' "$f" "$f does NOT use xhttp_port"
-    assert_not_grep_in_file '\bws_path=' "$f" "$f does NOT use ws_path"
-    assert_not_grep_in_file '\bgrpc_path=' "$f" "$f does NOT use grpc_path"
-    assert_not_grep_in_file '\bxhttp_path=' "$f" "$f does NOT use xhttp_path"
-done
+f="${SKILL_REPO_ROOT}/assets/setup-tls.sh"
+assert_grep_in_file '\bxport=' "$f" "$f uses xport"
+assert_grep_in_file '\bgport=' "$f" "$f uses gport"
+assert_grep_in_file '\bxhttpport=' "$f" "$f uses xhttpport"
+assert_grep_in_file '\bpath=' "$f" "$f uses path (ws path)"
+assert_grep_in_file '\bserviceName=' "$f" "$f uses serviceName (gRPC path)"
+assert_grep_in_file '\bxhttppath=' "$f" "$f uses xhttppath"
+assert_not_grep_in_file '\bws_port=' "$f" "$f does NOT use ws_port"
+assert_not_grep_in_file '\bgrpc_port=' "$f" "$f does NOT use grpc_port"
+assert_not_grep_in_file '\bxhttp_port=' "$f" "$f does NOT use xhttp_port"
+assert_not_grep_in_file '\bws_path=' "$f" "$f does NOT use ws_path"
+assert_not_grep_in_file '\bgrpc_path=' "$f" "$f does NOT use grpc_path"
+assert_not_grep_in_file '\bxhttp_path=' "$f" "$f does NOT use xhttp_path"
 
-for f in "${SKILL_REPO_ROOT}/assets/setup-reality.sh"; do
-    assert_grep_in_file '\bprivateKey=' "$f" "$f uses privateKey (camelCase)"
-    assert_grep_in_file '\bpassword=' "$f" "$f uses password (holds public key)"
-    assert_grep_in_file 'parse_reality_public_key' "$f" "$f uses parse_reality_public_key helper"
-    assert_not_grep_in_file '\bprivate_key=' "$f" "$f does NOT use private_key"
-    assert_not_grep_in_file '\bpublic_key=' "$f" "$f does NOT use public_key"
-done
+f="${SKILL_REPO_ROOT}/assets/setup-reality.sh"
+assert_grep_in_file '\bprivateKey=' "$f" "$f uses privateKey (camelCase)"
+assert_grep_in_file '\bpassword=' "$f" "$f uses password (holds public key)"
+assert_grep_in_file 'parse_reality_public_key' "$f" "$f uses parse_reality_public_key helper"
+assert_not_grep_in_file '\bprivate_key=' "$f" "$f does NOT use private_key"
+assert_not_grep_in_file '\bpublic_key=' "$f" "$f does NOT use public_key"
 
 # ----------------------------------------------------------------
 # Section 8: _TEST_MODE mechanism
