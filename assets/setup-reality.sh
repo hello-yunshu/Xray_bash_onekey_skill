@@ -7,6 +7,17 @@
 #   2. Replace all <PLACEHOLDER> values with actual user preferences
 #   3. Adjust override functions if the source has changed
 #
+# Contract-verified against install.sh v2.12.10+:
+#   - install_config.json path: /etc/idleleo/conf/install_config.json (NOT /etc/idleleo/info/)
+#   - Nginx binary path: /usr/local/nginx/sbin/nginx
+#   - UUIDv5_tranc requires an argument (random UUIDv5 char string)
+#   - Reality key variables: privateKey, password (NOT private_key/public_key)
+#   - xray x25519 output format: "PrivateKey: xxx\nPassword: yyy" or "PublicKey: yyy"
+#   - ip_check sets: local_ip, ip_version (NOT IP)
+#   - email variable is `custom_email` (NOT `email`)
+#   - Reality add-more variable is `reality_add_more` (NOT `add_more`)
+#   - Transport mode variable is `transport_mode` (NOT `ws_grpc_mode`)
+#
 # Usage: bash setup-reality.sh
 #
 
@@ -22,18 +33,30 @@ SERVERNAMES="www.microsoft.com"
 EMAIL="auto@reality-setup"
 UUID=""  # Leave empty for auto-generation
 
+# Optional: pin to a specific install.sh ref/commit (default: main)
+# Using a commit SHA provides immutability; using main always fetches the latest.
+INSTALL_SH_REF="${INSTALL_SH_REF:-main}"
+
 # ============================================================
 # Download and source install.sh
 # ============================================================
 
-INSTALL_SH_URL="https://raw.githubusercontent.com/hello-yunshu/Xray_bash_onekey/main/install.sh"
+INSTALL_SH_URL="https://raw.githubusercontent.com/hello-yunshu/Xray_bash_onekey/${INSTALL_SH_REF}/install.sh"
 INSTALL_SH="/tmp/xray_install_$$.sh"
 
-echo "[1/5] Downloading install.sh..."
+echo "[1/6] Downloading install.sh (ref: ${INSTALL_SH_REF})..."
 curl -fsSL "${INSTALL_SH_URL}" -o "${INSTALL_SH}"
 
-echo "[2/5] Sourcing install.sh with _TEST_MODE=1..."
+echo "[2/6] Syntax-checking install.sh (bash -n)..."
+if ! bash -n "${INSTALL_SH}"; then
+    echo "  ❌ install.sh failed bash -n syntax check. Aborting."
+    rm -f "${INSTALL_SH}"
+    exit 1
+fi
+
+echo "[3/6] Sourcing install.sh with _TEST_MODE=1..."
 export _TEST_MODE=1
+# shellcheck source=/dev/null
 source "${INSTALL_SH}"
 
 # ============================================================
@@ -45,8 +68,15 @@ old_config_exist_check() {
 }
 
 ip_check() {
-    IP="$(get_public_ip)"
-    echo "  Server IP: ${IP}"
+    # Contract: real ip_check sets local_ip + ip_version (NOT IP).
+    # Default to IPv4; override here if IPv6 is required.
+    ip_version="IPv4"
+    local_ip="$(get_public_ip "${ip_version}")"
+    if [[ -z "${local_ip}" ]]; then
+        echo "  ❌ Failed to get public IP"
+        return 1
+    fi
+    echo "  Server IP (${ip_version}): ${local_ip}"
 }
 
 port_set() {
@@ -54,14 +84,26 @@ port_set() {
 }
 
 email_set() {
-    email="${EMAIL}"
+    # Contract: install.sh uses `custom_email` (NOT `email`) as the variable name.
+    # The value is used for acme.sh certificate registration and Xray user email.
+    custom_email="${EMAIL}"
 }
 
 UUID_set() {
+    # Contract: UUIDv5_tranc requires an argument (random char string).
+    # An empty call returns immediately with no output, producing an invalid UUID.
     if [[ -z "${UUID}" ]]; then
-        UUID="$(UUIDv5_tranc)"
+        local uuid5_char
+        uuid5_char="$(head -n 10 /dev/urandom | md5sum | head -c ${random_num})"
+        UUID="$(UUIDv5_tranc "${uuid5_char}")"
     fi
-    echo "  UUID: ${UUID}"
+    # Do NOT echo the full UUID — it is a secret. Only confirm it was generated.
+    if [[ -n "${UUID}" ]]; then
+        echo "  UUID: generated (value suppressed for safety)"
+    else
+        echo "  ❌ UUID generation failed"
+        return 1
+    fi
 }
 
 target_set() {
@@ -73,25 +115,73 @@ serverNames_set() {
 }
 
 keys_set() {
-    local key_output
-    key_output="$(${xray_bin_dir}/xray x25519)"
-    private_key="$(echo "${key_output}" | grep "Private key" | awk '{print $3}')"
-    public_key="$(echo "${key_output}" | grep "Public key" | awk '{print $3}')"
-    echo "  Private Key: ${private_key}"
-    echo "  Public Key: ${public_key}"
+    # Contract: xray x25519 output is "PrivateKey: <key>\nPassword: <key>"
+    # (or "PublicKey:" in some versions). Variable names in install.sh are
+    # `privateKey` (camelCase) and `password` (NOT public_key).
+    # Use the project-provided parse_reality_public_key helper for compatibility.
+    local keys
+    keys="$(${xray_bin_dir}/xray x25519)"
+    privateKey="$(printf '%s\n' "${keys}" | awk -F"PrivateKey: " '{print $2}' | awk '{print $1}')"
+    password="$(parse_reality_public_key "${keys}")"
+    if [[ -z "${privateKey}" || -z "${password}" ]]; then
+        echo "  ❌ Failed to generate Reality keys"
+        return 1
+    fi
+    # Do NOT echo privateKey/password — they are secrets.
+    # Only confirm that keys were generated successfully.
+    echo "  Reality keys: generated (values suppressed for safety)"
 }
 
 shortIds_set() {
-    shortIds="$(openssl rand -hex 8)"
-    echo "  Short ID: ${shortIds}"
+    # Contract: install.sh uses generate_reality_short_id helper when available,
+    # fallback to openssl rand -hex 8. shortIds must be 16 hex chars.
+    if command -v generate_reality_short_id >/dev/null 2>&1; then
+        shortIds="$(generate_reality_short_id)"
+    else
+        shortIds="$(openssl rand -hex 8)"
+    fi
+    # Do NOT echo shortIds — it is a secret.
+    echo "  shortIds: generated (value suppressed for safety)"
 }
 
 xray_reality_add_more_choose() {
-    add_more="off"
-    ws_grpc_mode="None"
+    # Contract: install.sh uses `reality_add_more` (NOT `add_more`) and
+    # `transport_mode` (NOT `ws_grpc_mode`) as the variable names.
+    reality_add_more="off"
+    transport_mode="None"
+}
+
+spiderx_set() {
+    # Non-interactive: generate spiderx path silently (value is part of VLESS link).
+    if [[ "${old_config_status}" != "on" ]]; then
+        spiderx_path="$(generate_spiderx)"
+    fi
+}
+
+reality_balance_add_fq() {
+    # Non-interactive: skip load balancing setup.
+    reality_add_balance="off"
+    # Explicitly clear balance role so the standard Reality template never
+    # inherits a stale primary/secondary value from a prior install state.
+    reality_balance_role=""
+}
+
+reality_nginx_add_fq() {
+    # Non-interactive: skip additional Nginx setup for Reality.
+    reality_add_nginx="off"
 }
 
 firewall_set() {
+    :
+}
+
+auto_update() {
+    # Non-interactive: skip auto-update cron setup in template mode.
+    :
+}
+
+vless_link_image_choice() {
+    # Non-interactive: skip VLESS link/image generation (may print secrets).
     :
 }
 
@@ -99,27 +189,57 @@ firewall_set() {
 # Execute installation
 # ============================================================
 
-echo "[3/5] Running Reality mode installation..."
+echo "[4/6] Running Reality mode installation..."
 install_xray_reality
 
 # ============================================================
-# Verify and report
+# Verify and report (safe — no secrets)
 # ============================================================
 
-echo "[4/5] Verifying installation..."
+echo "[5/6] Verifying installation..."
 if systemctl is-active xray >/dev/null 2>&1; then
     echo "  ✅ Xray service is running"
 else
     echo "  ❌ Xray service is NOT running"
-    journalctl -u xray -e --no-pager
+    # Contract: do NOT output unredacted journalctl — it may contain secrets.
+    # Suggest the user run the redacted diagnostic command manually.
+    echo "  ℹ️  For safe diagnostics, run:"
+    echo "      journalctl -u xray -e --no-pager | redact_text_for_diagnostics"
+    echo "      (Source .github/test/redact.sh from the main repo first.)"
 fi
 
-echo "[5/5] Connection info:"
-if [[ -f /etc/idleleo/info/install_config.json ]]; then
-    cat /etc/idleleo/info/install_config.json
+echo "[6/6] Installation summary (secrets suppressed):"
+# Contract: do NOT cat the full install_config.json — it contains UUID, privateKey,
+# password, shortIds, host, and other secrets. Output a safe summary instead.
+CONFIG_FILE="/etc/idleleo/conf/install_config.json"
+if [[ -f "${CONFIG_FILE}" ]]; then
+    # Try to print a safe summary using jq if available.
+    if command -v jq >/dev/null 2>&1; then
+        jq -r '
+            "  mode: \(.shell_mode // .mode // "unknown")",
+            "  transport_mode: \(.transport_mode // "unknown")",
+            "  shell_version: \(.shell_version // "unknown")",
+            "  xray_version: \(.xray_version // "unknown")",
+            "  has_UUID: \(.UUID // .uuid | type == "string")",
+            "  has_privateKey: \(.privateKey | type == "string")",
+            "  has_publicKey: \(.publicKey // .password | type == "string")",
+            "  has_shortIds: \(.shortIds | type == "string")",
+            "  has_host: \(.host | type == "string")",
+            "  config_file: \(. | " (present at /etc/idleleo/conf/install_config.json)")"
+        ' "${CONFIG_FILE}" 2>/dev/null || echo "  (config file exists but could not be parsed)"
+    else
+        echo "  ✅ Config file exists at ${CONFIG_FILE}"
+        echo "  ℹ️  To view a safe summary, run:"
+        echo "      source .github/test/redact.sh && safe_print_config_summary ${CONFIG_FILE}"
+    fi
 else
-    echo "  ❌ install_config.json not found"
+    echo "  ❌ install_config.json not found at /etc/idleleo/conf/"
 fi
+
+echo ""
+echo "ℹ️  Full connection info (including VLESS link) is available on the server via:"
+echo "    idleleo  (option 18 to view connection info)"
+echo "    Only reveal it interactively in a trusted terminal."
 
 # Cleanup
 rm -f "${INSTALL_SH}"

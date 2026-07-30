@@ -39,19 +39,21 @@ Load balancing? → ws ONLY
 | Parameter | Default | Interactive Function | Override Must Set |
 |-----------|---------|---------------------|-------------------|
 | Port | 443 | `port_set` | `port="443"` |
-| Email | auto | `email_set` | `email="auto@generated"` |
-| UUID | auto | `UUID_set` | `UUID="$(UUIDv5_tranc)"` |
+| Email | auto | `email_set` | `custom_email="auto@generated"` (variable is `custom_email`, NOT `email`) |
+| UUID | auto | `UUID_set` | `UUID5_char="$(head -n 10 /dev/urandom \| md5sum \| head -c ${random_num})"; UUID="$(UUIDv5_tranc "${UUID5_char}")"` |
 | Target | www.microsoft.com | `target_set` | `target="www.microsoft.com"` |
 | ServerNames | target domain | `serverNames_set` | `serverNames="${target}"` |
-| Private Key | auto (xray x25519) | `keys_set` | Must call `${xray_bin_dir}/xray x25519` |
-| Short ID | auto (openssl) | `shortIds_set` | Must call `openssl rand -hex 8` |
+| Private Key | auto (xray x25519) | `keys_set` | Must call `${xray_bin_dir}/xray x25519` and set `privateKey` (camelCase) + `password` (NOT public_key) |
+| Short ID | auto (openssl) | `shortIds_set` | Must call `openssl rand -hex 8` or `generate_reality_short_id`; sets `shortIds` |
+
+> Contract note (Task D): `UUIDv5_tranc` REQUIRES an argument — `UUIDv5_tranc` with no argument returns immediately and produces an empty UUID. Always pass a random char string. The Reality key output uses `privateKey` (camelCase) and `password` (which holds the public key); `parse_reality_public_key` helper should be used to remain compatible across Xray versions.
 
 ### Optional Parameters
 | Parameter | Default | Interactive Function | Notes |
 |-----------|---------|---------------------|-------|
-| Add ws/gRPC | No | `xray_reality_add_more_choose` | Adds Nginx + ws/gRPC transport |
-| Add Nginx | No | `reality_nginx_add_fq` | Only if add_more chosen |
-| Load balance | No | `reality_balance_add_fq` | Only if add_more chosen |
+| Add ws/gRPC | No | `xray_reality_add_more_choose` | Sets `reality_add_more` (NOT `add_more`); sets `transport_mode` (NOT `ws_grpc_mode`) |
+| Add Nginx | No | `reality_nginx_add_fq` | Only if `reality_add_more` chosen |
+| Load balance | No | `reality_balance_add_fq` | Only if `reality_add_more` chosen |
 
 ### Install Function Call Chain
 ```
@@ -65,13 +67,13 @@ install_xray_reality
   ├── ip_check                ← override: set IP variables
   ├── xray_install
   ├── port_set                ← override: set port
-  ├── email_set               ← override: set email
+  ├── email_set               ← override: set `custom_email` (NOT `email`)
   ├── UUID_set                ← override: set UUID
   ├── target_set              ← override: set target
   ├── serverNames_set         ← override: set serverNames
   ├── keys_set                ← ⚠️ MUST still call xray x25519
   ├── shortIds_set            ← ⚠️ MUST still call openssl rand
-  ├── xray_reality_add_more_choose  ← override: set add_more choice
+  ├── xray_reality_add_more_choose  ← override: set `reality_add_more` (NOT `add_more`)
   ├── transport_qr            ← ❌ DO NOT override, let it run
   ├── firewall_set            ← override: no-op
   ├── stop_service_all
@@ -108,18 +110,22 @@ vless://UUID@IP:PORT?security=reality&pbk=PUBLIC_KEY&sid=SHORT_ID&type=tcp&flow=
 ### Required Parameters
 | Parameter | Default | Interactive Function | Override Must Set |
 |-----------|---------|---------------------|-------------------|
-| Domain | (required) | `domain_check` | `domain="example.com"` |
+| Domain | (required) | `domain_check` | `domain="example.com"` (also requires `local_ip` to be set by `ip_check` override) |
 | Port | 443 | `port_set` | `port="443"` |
-| Email | auto | `email_set` | `email="auto@generated"` |
-| UUID | auto | `UUID_set` | `UUID="$(UUIDv5_tranc)"` |
-| Transport mode | all | `transport_choose` | `transport_mode="all"` / `"onlyws"` / `"onlygRPC"` / `"onlyxhttp"` |
+| Email | auto | `email_set` | `custom_email="auto@generated"` (variable is `custom_email`, NOT `email`) |
+| UUID | auto | `UUID_set` | `UUID5_char="..."; UUID="$(UUIDv5_tranc "${UUID5_char}")"` (requires argument) |
+| Transport mode | wsgRPCxhttp | `transport_choose` | `transport_mode="wsgRPCxhttp"` / `"onlyws"` / `"onlygRPC"` / `"onlyxhttp"` / `"wsxhttp"` |
+
+> Contract note (Task D): There is NO `"all"` transport_mode value — use `"wsgRPCxhttp"` for ws+gRPC+xHTTP. Other valid combinations: `onlyws`, `onlygRPC`, `onlyxhttp`, `wsxhttp`. After setting `transport_mode`, call `_transport_set_shell_mode` to update `shell_mode`.
 
 ### Transport-Specific Parameters
-| Transport | Port Function | Path Function | Default Port | Default Path |
-|-----------|--------------|---------------|-------------|-------------|
-| WebSocket | `ws_inbound_port_set` | `ws_path_set` | auto | auto |
-| gRPC | `grpc_inbound_port_set` | `grpc_path_set` | auto | auto |
-| xHTTP | `xhttp_inbound_port_set` | `xhttp_path_set` | auto | auto |
+| Transport | Port Function | Path Function | Port Variable | Path Variable | Default Port Range |
+|-----------|--------------|---------------|---------------|---------------|-------------|
+| WebSocket | `ws_inbound_port_set` | `ws_path_set` | `xport` | `path` | 10000-10999 |
+| gRPC | `grpc_inbound_port_set` | `grpc_path_set` | `gport` | `serviceName` | 10000-10999 |
+| xHTTP | `xhttp_inbound_port_set` | `xhttp_path_set` | `xhttpport` | `xhttppath` | 11000-11999 |
+
+> Contract note (Task D): Variable names differ from intuitive names. Use `xport`/`gport`/`xhttpport` (NOT `ws_port`/`grpc_port`/`xhttp_port`). Use `path`/`serviceName`/`xhttppath` (NOT `ws_path`/`grpc_path`/`xhttp_path`). `generate_random_port` REQUIRES min/max arguments.
 
 ### Install Function Call Chain
 ```
@@ -134,7 +140,7 @@ install_xray_ws_tls
   ├── domain_check            ← override: set domain, verify DNS
   ├── xray_install
   ├── port_set                ← override: set port
-  ├── email_set               ← override: set email
+  ├── email_set               ← override: set `custom_email` (NOT `email`)
   ├── UUID_set                ← override: set UUID
   ├── transport_choose        ← override: set transport_mode
   ├── ws_inbound_port_set     ← override (if ws enabled)
@@ -205,8 +211,8 @@ install_xray_ws_only
 | Parameter | Default | Override |
 |-----------|---------|----------|
 | Port | 443 | `port="443"` |
-| Email | auto | `email="auto@generated"` |
-| UUID | auto | `UUID="$(UUIDv5_tranc)"` |
+| Email | auto | `custom_email="auto@generated"` (NOT `email`) |
+| UUID | auto | `UUID5_char="..."; UUID="$(UUIDv5_tranc "${UUID5_char}")"` (requires argument) |
 
 ### Install Function Call Chain
 ```
@@ -220,9 +226,9 @@ install_xray_xtls_only
   ├── ip_check
   ├── xray_install
   ├── port_set
-  ├── email_set
+  ├── email_set               ← override: set `custom_email` (NOT `email`)
   ├── UUID_set
-  ├── transport_qr            ← ❌ DO NOT override
+  ├── transport_qr            ← ❌ DO NOT override, let it run
   ├── firewall_set
   ├── stop_service_all
   ├── port_exist_check
@@ -247,28 +253,152 @@ vless://UUID@IP:PORT?security=tls&type=tcp&flow=xtls-rprx-vision#REMARK
 
 ## Transport Mode Values
 
-Used by `transport_choose` override:
+Used by `transport_choose` override. **There is NO `"all"` value** — use `wsgRPCxhttp` for the previous "all" behaviour:
 
 | Value | Protocols Enabled | Nginx Upstreams |
 |-------|------------------|-----------------|
-| `all` | ws + gRPC + xHTTP | All 3 upstream blocks |
 | `onlyws` | ws only | ws upstream only |
 | `onlygRPC` | gRPC only | gRPC upstream only |
 | `onlyxhttp` | xHTTP only | xHTTP upstream only |
+| `wsxhttp` | ws + xHTTP | ws + xHTTP upstreams |
+| `wsgRPCxhttp` | ws + gRPC + xHTTP | All 3 upstream blocks |
+
+After setting `transport_mode`, always call `_transport_set_shell_mode` to update `shell_mode` accordingly.
 
 ## Key Variables Reference
 
-Variables that override functions must set (read from install.sh source to verify):
+Variables that override functions must set (read from install.sh source to verify). **Variable names use camelCase and short forms, NOT intuitive snake_case**:
 
 | Variable | Set By | Used By |
 |----------|--------|---------|
 | `old_config_status` | `old_config_exist_check` override | Multiple functions |
-| `IP` | `ip_check` override | Config generation |
+| `local_ip` | `ip_check` override | Config generation (host field for Reality/ws-only/XTLS-only) |
+| `ip_version` | `ip_check` override | Config generation |
+| `domain` | `domain_check` override | TLS config (host field for TLS mode) |
 | `port` | `port_set` override | Xray + Nginx config |
-| `email` | `email_set` override | acme.sh certificate |
-| `UUID` | `UUID_set` override | Xray config |
+| `custom_email` | `email_set` override | acme.sh certificate (NOT `email`) |
+| `UUID` | `UUID_set` override | Xray config (requires `UUIDv5_tranc "<arg>"`) |
 | `target` | `target_set` override | Reality config |
 | `serverNames` | `serverNames_set` override | Reality config |
+| `privateKey` | `keys_set` override | Reality config (camelCase, NOT private_key) |
+| `password` | `keys_set` override | Reality config (holds public key, NOT publicKey/public_key) |
+| `shortIds` | `shortIds_set` override | Reality config (camelCase) |
 | `transport_mode` | `transport_choose` override | Xray + Nginx config |
-| `ws_port` / `grpc_port` / `xhttp_port` | Port set overrides | Xray config |
-| `ws_path` / `grpc_path` / `xhttp_path` | Path set overrides | Xray + Nginx config |
+| `xport` | `ws_inbound_port_set` override | Xray config (NOT ws_port) |
+| `gport` | `grpc_inbound_port_set` override | Xray config (NOT grpc_port) |
+| `xhttpport` | `xhttp_inbound_port_set` override | Xray config (NOT xhttp_port) |
+| `path` | `ws_path_set` override | Xray + Nginx config (NOT ws_path) |
+| `serviceName` | `grpc_path_set` override | Xray + Nginx config (NOT grpc_path) |
+| `xhttppath` | `xhttp_path_set` override | Xray + Nginx config (NOT xhttp_path) |
+
+## Secret Redaction Contract
+
+> Contract note (P0-D): Templates MUST NOT output secrets to stdout/stderr.
+
+The following variables and files contain secrets and MUST NOT be echoed or catted directly in generated scripts:
+
+| Secret | Variable / Path | Reason |
+|--------|-----------------|--------|
+| Reality private key | `privateKey` | Server identity — compromise allows impersonation |
+| Reality public key | `password` / `publicKey` | Used in VLESS link — compromise allows link reconstruction |
+| Reality short ID | `shortIds` | Used in VLESS link — compromise allows link reconstruction |
+| User UUID | `UUID` | User identity — compromise allows traffic correlation |
+| User email | `custom_email` | PII — used for certificate registration |
+| Server IP | `local_ip` | Server location — compromise allows targeting |
+| Full config | `/etc/idleleo/conf/install_config.json` | Contains all of the above secrets in JSON |
+| Raw logs | `journalctl -u xray -e` | May contain secrets in error messages |
+
+### Safe Output Patterns
+
+Override functions should confirm success WITHOUT echoing the value:
+
+```bash
+# ❌ BAD — leaks secret to stdout/logs
+echo "  UUID: ${UUID}"
+echo "  privateKey: ${privateKey}"
+cat /etc/idleleo/conf/install_config.json
+journalctl -u xray -e --no-pager
+
+# ✅ GOOD — confirms generation without leaking value
+echo "  UUID: generated (value suppressed for safety)"
+echo "  Reality keys: generated (values suppressed for safety)"
+```
+
+### Safe Diagnostics
+
+When installation fails, use redaction helpers before output:
+
+```bash
+# Source redaction helpers from the main repo
+source .github/test/redact.sh
+
+# Safe config summary (no secrets)
+safe_print_config_summary /etc/idleleo/conf/install_config.json
+
+# Safe log output (vless links, keys, tokens redacted)
+journalctl -u xray -e --no-pager | redact_text_for_diagnostics
+```
+
+## Key Paths Reference
+
+| Resource | Path |
+|----------|------|
+| install_config.json | `/etc/idleleo/conf/install_config.json` (NOT `/etc/idleleo/info/`) |
+| Xray binary | `/usr/local/bin/xray` (`${xray_bin_dir}/xray`) |
+| Xray config | `/etc/idleleo/conf/xray/config.json` (`${xray_conf}`) |
+| Nginx binary | `/usr/local/nginx/sbin/nginx` (`${nginx_dir}/sbin/nginx`, NOT `/etc/idleleo/nginx/sbin/`) |
+| Nginx config dir | `/etc/idleleo/conf/nginx/` (`${nginx_conf_dir}`) |
+| Xray conf dir | `/etc/idleleo/conf/xray/` (`${xray_conf_dir}`) |
+| idleleo root | `/etc/idleleo/` (`${idleleo_dir}`) |
+| conf root | `/etc/idleleo/conf/` (`${idleleo_conf_dir}`) |
+
+---
+
+## Hierarchical Install Profiles (v2.13+)
+
+The install wizard now uses a hierarchical menu: **protocol main class → deployment method → optional components**. The interactive menu sets an `install_profile` and calls `apply_install_profile` to configure all variables upfront, so interactive functions (`transport_choose`, `xray_reality_add_more_choose`, `reality_nginx_add_fq`, `reality_balance_add_fq`) skip their prompts when `install_wizard_preset="on"`.
+
+### Profile Values
+
+| Profile | tls_mode | transport_mode | reality_add_more | reality_add_nginx | reality_add_balance | reality_balance_role | Install Function |
+|---------|----------|----------------|------------------|-------------------|---------------------|----------------------|------------------|
+| `reality_nginx` | Reality | None | off | on | off | (empty) | `install_xray_reality` |
+| `reality_standard` | Reality | None | off | off | off | (empty) | `install_xray_reality` |
+| `reality_transport` | Reality | (set by menu) | on | off | off | (empty) | `install_xray_reality` |
+| `reality_transport_nginx` | Reality | (set by menu) | on | on | off | (empty) | `install_xray_reality` |
+| `reality_balance_primary` | Reality | None | off | on | on | primary | `install_xray_reality` |
+| `reality_balance_secondary` | Reality | None | off | off | on | secondary | `install_xray_reality` |
+| `transport_nginx_tls` | TLS | (set by menu) | off | off | off | (empty) | `install_xray_ws_tls` |
+| `transport_only` | None | (set by menu) | off | off | off | (empty) | `install_xray_ws_only` |
+| `xtls_only` | XTLS | None | off | off | off | (empty) | `install_xray_xtls_only` |
+
+`reality_balance_primary` installs the Nginx front-end + upstream (calls `_apply_reality_nginx_install`).
+`reality_balance_secondary` only provides the Reality backend and does NOT uninstall an existing Nginx (calls `_skip_reality_nginx_install`).
+
+### Skill Templates and Profiles
+
+Skill templates do NOT need to use `install_profile` or `install_wizard_preset`. They override the interactive functions directly, which takes precedence over the preset mechanism. The profile system is only used by the interactive menu. Skill templates remain fully non-interactive by:
+
+1. Overriding `transport_choose`, `xray_reality_add_more_choose`, `reality_nginx_add_fq`, `reality_balance_add_fq` with functions that set variables directly
+2. Setting `old_config_status="off"` to skip config-read prompts
+3. Calling the real install function (e.g., `install_xray_reality`) which uses the pre-set variables
+
+### Menu Structure
+
+```
+安装向导 (Install Wizard)
+├── 1. Reality
+│   ├── 1. Reality + Nginx 前置保护 (recommended)
+│   ├── 2. 标准 Reality
+│   ├── 3. Reality + ws/gRPC/xHTTP
+│   ├── 4. Reality + ws/gRPC/xHTTP + Nginx
+│   └── 5. Reality 负载均衡 (advanced)
+├── 2. ws/gRPC/xHTTP
+│   ├── 1. Nginx + TLS (recommended)
+│   └── 2. ONLY: 无 Nginx、无 TLS (advanced)
+└── 3. XTLS ONLY (advanced)
+```
+
+### Safety: No Auto-Uninstall of Existing Nginx
+
+When a profile sets `reality_add_nginx="off"`, the `_skip_reality_nginx_install` function is called. This function does NOT uninstall existing Nginx — it only prints a skip message. Users who want to remove Nginx must do so explicitly through the uninstall menu option.

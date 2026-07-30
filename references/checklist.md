@@ -17,12 +17,12 @@ Pre-flight and post-flight checklist for AI-driven Xray deployment. All P0 items
 - [ ] **transport_qr NOT overridden**: Let it run after setting transport variables
 - [ ] **Xray service running**: `systemctl is-active xray` returns `active`
 - [ ] **Config file valid**: `/etc/idleleo/conf/xray/config.json` is valid JSON
-- [ ] **Connection info readable**: `/etc/idleleo/info/install_config.json` exists and is parseable
+- [ ] **Connection info readable**: `/etc/idleleo/conf/install_config.json` exists and is parseable (path is `conf/`, NOT `info/`)
 
 ## P1 — Should Pass (Important)
 
 - [ ] **Nginx running** (TLS mode): `systemctl is-active nginx` returns `active`
-- [ ] **Nginx config valid** (TLS mode): `/etc/idleleo/nginx/sbin/nginx -t` passes
+- [ ] **Nginx config valid** (TLS mode): `/usr/local/nginx/sbin/nginx -t` passes
 - [ ] **Certificate valid** (TLS mode): `acme.sh` issued certificate, not self-signed
 - [ ] **VLESS link generated**: Link format is correct and contains all required fields
 - [ ] **Firewall configured**: Chosen port open in iptables/nftables/ufw
