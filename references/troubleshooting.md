@@ -82,7 +82,7 @@ Common issues encountered during AI-driven Xray deployment and their solutions.
 ### Xray Won't Start
 **Symptom**: `systemctl start xray` fails
 **Diagnosis**:
-1. `journalctl -u xray -e` — check error logs
+1. `journalctl -u xray -e --no-pager | redact_text_for_diagnostics` — check redacted error logs after sourcing the main repo redaction helper
 2. `ss -tlnp | grep <port>` — check port conflict
 3. Validate config: `xray run -test -c /etc/idleleo/conf/xray/config.json`
 **Common Fixes**:
@@ -93,7 +93,7 @@ Common issues encountered during AI-driven Xray deployment and their solutions.
 ### Nginx Won't Start (TLS mode)
 **Symptom**: `systemctl start nginx` fails
 **Diagnosis**:
-1. `/etc/idleleo/nginx/sbin/nginx -t` — test config
+1. `/usr/local/nginx/sbin/nginx -t` — test config
 2. `journalctl -u nginx -e` — check error logs
 **Common Fixes**:
 - Config syntax error: Fix nginx config
@@ -115,11 +115,9 @@ Common issues encountered during AI-driven Xray deployment and their solutions.
 ### VLESS Link Invalid
 **Symptom**: Client rejects the VLESS link
 **Cause**: Link format incorrect or missing fields
-**Fix**: Reconstruct link from install_config.json:
-```bash
-cat /etc/idleleo/info/install_config.json | jq .
-```
-Then build link manually based on mode (see modes.md for format).
+**Fix**: In a trusted interactive terminal, run `idleleo` and use option 18 to
+regenerate the connection information. Do not print the full
+`install_config.json` into CI, chat, tickets, or other shared logs.
 
 ### High Latency / Slow Speed
 **Symptom**: Connection works but slow
@@ -192,8 +190,8 @@ systemctl restart nginx   # Restart Nginx
 |---------|------|
 | Xray config | `/etc/idleleo/conf/xray/config.json` |
 | Nginx config dir | `/etc/idleleo/conf/nginx/` |
-| Install config | `/etc/idleleo/info/install_config.json` |
+| Install config | `/etc/idleleo/conf/install_config.json` |
 | Xray binary | `/usr/local/bin/xray` |
-| Nginx binary | `/etc/idleleo/nginx/sbin/nginx` |
+| Nginx binary | `/usr/local/nginx/sbin/nginx` |
 | Logs | `/etc/idleleo/logs/` |
 | Management command | `idleleo` |
