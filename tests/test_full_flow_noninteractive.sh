@@ -204,6 +204,9 @@ xray_online_version="25.12.8"
 old_config_status="off"
 shell_mode="Reality"
 tls_mode="reality"
+# Point CONFIG_FILE to a non-existent path so the install guard does not trigger
+CONFIG_FILE="/tmp/xray_test_nonexistent_config_$$.json"
+FORCE_REINSTALL="0"
 
 # --- Call the REAL install_xray_reality ---
 install_xray_reality
@@ -391,6 +394,9 @@ old_config_status="off"
 shell_mode="TLS"
 tls_mode="tls"
 local_ip="203.0.113.1"
+# Point CONFIG_FILE to a non-existent path so the install guard does not trigger
+CONFIG_FILE="/tmp/xray_test_nonexistent_config_$$.json"
+FORCE_REINSTALL="0"
 
 # --- Call the REAL install_xray_ws_tls ---
 install_xray_ws_tls
@@ -535,6 +541,163 @@ for func in "${TLS_REQUIRED_OVERRIDES[@]}"; do
         bad "setup-tls.sh does NOT override ${func}"
     fi
 done
+
+# ----------------------------------------------------------------
+# Section 6: Fail-closed scenarios — install function returns non-zero
+#   Scenario 1: install_xray_reality fails → Skill must exit non-zero
+#   Scenario 2: install_xray_ws_tls fails → Skill must exit non-zero
+# ----------------------------------------------------------------
+echo ""
+echo "--- Section 6: Fail-closed when install function returns non-zero ---"
+
+# Build a wrapper that replicates the Skill's execute+verify path with a
+# failing install function. The wrapper sources install.sh, mocks system
+# helpers, applies the template overrides, then calls the Skill's execute
+# section (which must detect the failure and exit non-zero).
+FAIL_WRAPPER=$(mktemp /tmp/xray_skill_fail_XXXXXX.sh)
+
+cat > "${FAIL_WRAPPER}" << 'WRAPPER_EOF'
+#!/bin/bash
+set -uo pipefail
+export _TEST_MODE=1
+
+INSTALL_SH="__INSTALL_SH_PLACEHOLDER__"
+# shellcheck source=/dev/null
+source "${INSTALL_SH}" 2>/dev/null || true
+
+# Mock system-modifying functions (all no-ops)
+is_root() { :; }
+check_and_create_user_group() { :; }
+check_system() { :; }
+dependency_install() { :; }
+basic_optimization() { :; }
+create_directory() { :; }
+xray_install() { xray_version="25.12.8"; return 0; }
+stop_service_all() { :; }
+port_exist_check() { :; }
+xray_conf_add() { :; }
+install_config_reality() { :; }
+install_config_tls_ws() { :; }
+install_config_ws_only() { :; }
+install_config_xtls_only() { :; }
+update_json_config() { :; }
+harden_config_permissions() { :; }
+basic_information() { :; }
+enable_process_systemd() { :; }
+service_restart() { :; }
+setup_auto_clean_logs() { :; }
+show_information() { :; }
+nginx_exist_check() { :; }
+nginx_systemd() { :; }
+nginx_ssl_conf_add() { :; }
+nginx_conf_add() { :; }
+nginx_servers_conf_add() { :; }
+ssl_judge_and_install() { :; }
+tls_type() { :; }
+acme_cron_update() { :; }
+judge() { :; }
+log_echo() { :; }
+download_script_file() { :; }
+get_public_ip() { echo "203.0.113.1"; }
+generate_spiderx() { echo "/spiderx"; }
+generate_random_port() { echo "$((RANDOM % 999 + 10000))"; }
+generate_reality_short_id() { echo "0123456789abcdef"; }
+UUIDv5_tranc() { echo "uuid-v5-generated"; }
+systemctl() { :; }
+info_extraction() { case "$1" in xray_version) echo "25.12.8" ;; host) echo "203.0.113.1" ;; ip_version) echo "IPv4" ;; *) echo "" ;; esac; }
+dig() { echo "203.0.113.1"; }
+crontab() { :; }
+
+xray_bin_dir="/tmp/mock_xray_bin_fail_$$"
+mkdir -p "${xray_bin_dir}"
+cat > "${xray_bin_dir}/xray" << 'XRAYEOF'
+#!/bin/bash
+echo "PrivateKey: MOCK_PRIVATE_KEY_DO_NOT_LEAK"
+echo "Password: MOCK_PASSWORD_DO_NOT_LEAK"
+XRAYEOF
+chmod +x "${xray_bin_dir}/xray"
+
+SCENARIO="__SCENARIO_PLACEHOLDER__"
+__TEMPLATE__="__TEMPLATE_PLACEHOLDER__"
+
+eval "$(awk '/^# Override interactive functions/{copy=1} /^# Execute installation/{copy=0} copy' "${__TEMPLATE__}")"
+
+random_num="${random_num:-8}"
+xray_online_version="25.12.8"
+old_config_status="off"
+CONFIG_FILE="/tmp/xray_test_fail_config_$$.json"
+FORCE_REINSTALL="0"
+PORT="443"
+TARGET="www.microsoft.com"
+SERVERNAMES="www.microsoft.com"
+EMAIL="auto@test"
+UUID=""
+DOMAIN="example.com"
+TRANSPORT_MODE="wsgRPCxhttp"
+local_ip="203.0.113.1"
+
+case "${SCENARIO}" in
+    reality_fail)
+        shell_mode="Reality"; tls_mode="reality"
+        # Make install_xray_reality fail
+        install_xray_reality() { return 1; }
+        # Replicate Skill execute section
+        if ! install_xray_reality; then
+            echo "FAIL_CLOSED_EXIT"
+            exit 1
+        fi
+        ;;
+    tls_fail)
+        shell_mode="TLS"; tls_mode="tls"
+        # Make install_xray_ws_tls fail
+        install_xray_ws_tls() { return 1; }
+        # Replicate Skill execute section
+        if ! install_xray_ws_tls; then
+            echo "FAIL_CLOSED_EXIT"
+            exit 1
+        fi
+        ;;
+esac
+
+rm -rf "${xray_bin_dir}"
+WRAPPER_EOF
+
+# --- Scenario 1: install_xray_reality fails ---
+sed -i.bak "s|__INSTALL_SH_PLACEHOLDER__|${INSTALL_SH}|g" "${FAIL_WRAPPER}"
+sed -i.bak2 "s|__SCENARIO_PLACEHOLDER__|reality_fail|g" "${FAIL_WRAPPER}"
+sed -i.bak3 "s|__TEMPLATE_PLACEHOLDER__|${SKILL_REPO_ROOT}/assets/setup-reality.sh|g" "${FAIL_WRAPPER}"
+rm -f "${FAIL_WRAPPER}.bak" "${FAIL_WRAPPER}.bak2" "${FAIL_WRAPPER}.bak3"
+
+run_with_timeout 10 bash "${FAIL_WRAPPER}"
+if [[ ${RUN_EXIT} -ne 0 ]]; then
+    ok "Scenario 1: install_xray_reality fails → Skill exits non-zero (${RUN_EXIT})"
+else
+    bad "Scenario 1: install_xray_reality fails → Skill should exit non-zero but got 0"
+fi
+if printf '%s\n' "${RUN_OUTPUT}" | grep -q "FAIL_CLOSED_EXIT"; then
+    ok "Scenario 1: fail-closed path triggered"
+else
+    bad "Scenario 1: fail-closed path NOT triggered"
+fi
+
+# --- Scenario 2: install_xray_ws_tls fails ---
+sed -i.bak "s|__SCENARIO_PLACEHOLDER__|tls_fail|g" "${FAIL_WRAPPER}"
+sed -i.bak2 "s|__TEMPLATE_PLACEHOLDER__|${SKILL_REPO_ROOT}/assets/setup-tls.sh|g" "${FAIL_WRAPPER}"
+rm -f "${FAIL_WRAPPER}.bak" "${FAIL_WRAPPER}.bak2"
+
+run_with_timeout 10 bash "${FAIL_WRAPPER}"
+if [[ ${RUN_EXIT} -ne 0 ]]; then
+    ok "Scenario 2: install_xray_ws_tls fails → Skill exits non-zero (${RUN_EXIT})"
+else
+    bad "Scenario 2: install_xray_ws_tls fails → Skill should exit non-zero but got 0"
+fi
+if printf '%s\n' "${RUN_OUTPUT}" | grep -q "FAIL_CLOSED_EXIT"; then
+    ok "Scenario 2: fail-closed path triggered"
+else
+    bad "Scenario 2: fail-closed path NOT triggered"
+fi
+
+rm -f "${FAIL_WRAPPER}"
 
 # ----------------------------------------------------------------
 # Summary

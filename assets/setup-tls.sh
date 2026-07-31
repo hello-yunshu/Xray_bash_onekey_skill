@@ -43,6 +43,19 @@ TRANSPORT_MODE="wsgRPCxhttp"
 INSTALL_SH_REF="${INSTALL_SH_REF:-main}"
 
 # ============================================================
+# Guard against overwriting an existing installation
+# ============================================================
+
+CONFIG_FILE="/etc/idleleo/conf/install_config.json"
+FORCE_REINSTALL="${FORCE_REINSTALL:-0}"
+
+if [[ -f "${CONFIG_FILE}" && "${FORCE_REINSTALL}" != "1" ]]; then
+    echo "❌ Existing installation detected at ${CONFIG_FILE}"
+    echo "Set FORCE_REINSTALL=1 only when replacement is intentional."
+    exit 1
+fi
+
+# ============================================================
 # Download and source install.sh
 # ============================================================
 
@@ -69,6 +82,10 @@ source "${INSTALL_SH}"
 # ============================================================
 
 old_config_exist_check() {
+    if [[ -f "${CONFIG_FILE}" && "${FORCE_REINSTALL}" != "1" ]]; then
+        echo "❌ Existing installation detected; refusing to overwrite."
+        return 1
+    fi
     old_config_status="off"
 }
 
@@ -189,30 +206,54 @@ vless_link_image_choice() {
 # ============================================================
 
 echo "[4/6] Running TLS mode installation..."
-install_xray_ws_tls
+if ! install_xray_ws_tls; then
+    echo "❌ TLS installation failed"
+    rm -f "${INSTALL_SH}"
+    exit 1
+fi
 
 # ============================================================
 # Verify and report (safe — no secrets)
 # ============================================================
 
 echo "[5/6] Verifying installation..."
-if systemctl is-active xray >/dev/null 2>&1; then
-    echo "  ✅ Xray service is running"
-else
+verification_failed=0
+
+if ! systemctl is-active --quiet xray; then
     echo "  ❌ Xray service is NOT running"
-    # Contract: do NOT output unredacted journalctl — it may contain secrets.
-    # Suggest the user run the redacted diagnostic command manually.
-    echo "  ℹ️  For safe diagnostics, run:"
-    echo "      journalctl -u xray -e --no-pager | redact_text_for_diagnostics"
-    echo "      (Source .github/test/redact.sh from the main repo first.)"
+    verification_failed=1
+else
+    echo "  ✅ Xray service is running"
 fi
 
-if systemctl is-active nginx >/dev/null 2>&1; then
-    echo "  ✅ Nginx service is running"
-else
+if ! systemctl is-active --quiet nginx; then
     echo "  ❌ Nginx service is NOT running"
-    # Contract: Nginx binary is at /usr/local/nginx/sbin/nginx.
-    /usr/local/nginx/sbin/nginx -t 2>&1 || true
+    verification_failed=1
+else
+    echo "  ✅ Nginx service is running"
+fi
+
+if [[ ! -s "${CONFIG_FILE}" ]] || ! jq empty "${CONFIG_FILE}" >/dev/null 2>&1; then
+    echo "  ❌ Installation config is missing or invalid"
+    verification_failed=1
+fi
+
+if [[ -s "${CONFIG_FILE}" ]] && jq empty "${CONFIG_FILE}" >/dev/null 2>&1; then
+    if [[ "$(jq -r '.tls // empty' "${CONFIG_FILE}" 2>/dev/null)" != "TLS" ]]; then
+        echo "  ❌ Installation config tls field is not TLS"
+        verification_failed=1
+    fi
+fi
+
+# Contract: Nginx binary is at /usr/local/nginx/sbin/nginx.
+if [[ -x /usr/local/nginx/sbin/nginx ]] && ! /usr/local/nginx/sbin/nginx -t >/dev/null 2>&1; then
+    echo "  ❌ Nginx configuration test failed"
+    verification_failed=1
+fi
+
+if (( verification_failed != 0 )); then
+    rm -f "${INSTALL_SH}"
+    exit 1
 fi
 
 echo "[6/6] Installation summary (secrets suppressed):"
