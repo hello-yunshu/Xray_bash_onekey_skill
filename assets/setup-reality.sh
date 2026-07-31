@@ -237,7 +237,16 @@ if [[ -s "${CONFIG_FILE}" ]] && jq empty "${CONFIG_FILE}" >/dev/null 2>&1; then
         echo "  ❌ Installation config tls field is not Reality"
         verification_failed=1
     fi
-    for _field in UUID privateKey password shortIds host; do
+    # Contract: install_config.json stores the Reality user id under the field
+    # name "id" (NOT "UUID"). Accept "UUID" only as a legacy fallback so older
+    # configs are not falsely flagged. A normal Reality install must NOT fail
+    # merely because ".UUID" is absent when ".id" is present.
+    user_id="$(jq -r '.id // .UUID // empty' "${CONFIG_FILE}" 2>/dev/null)"
+    if [[ -z "${user_id}" ]]; then
+        echo "  ❌ Required field missing or empty: id"
+        verification_failed=1
+    fi
+    for _field in privateKey password shortIds host; do
         if [[ -z "$(jq -r --arg f "${_field}" '.[$f] // empty' "${CONFIG_FILE}" 2>/dev/null)" ]]; then
             echo "  ❌ Required field missing or empty: ${_field}"
             verification_failed=1

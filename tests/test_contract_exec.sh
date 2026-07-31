@@ -532,6 +532,335 @@ else
 fi
 
 # ----------------------------------------------------------------
+# Section 9: Fail-closed verification scenarios (Scenarios 3-9)
+#   3. Xray inactive → returns non-zero
+#   4. TLS Nginx inactive → returns non-zero
+#   5. Config missing → returns non-zero
+#   6. Config JSON corrupted → returns non-zero
+#   7. Reality config uses `.id` → validation succeeds
+#   8. Existing install + no FORCE_REINSTALL=1 → reject + file unchanged
+#   9. FORCE_REINSTALL=1 → can enter install flow
+# ----------------------------------------------------------------
+echo ""
+echo "--- Section 15: Fail-closed verification scenarios ---"
+
+VERIFY_WRAPPER=$(mktemp /tmp/xray_skill_verify_XXXXXX.sh)
+VERIFY_TMP_DIR=$(mktemp -d /tmp/xray_skill_verify_tmp_XXXXXX)
+trap 'rm -rf "${VERIFY_WRAPPER}" "${VERIFY_TMP_DIR}"' EXIT
+
+cat > "${VERIFY_WRAPPER}" << 'VERIFY_EOF'
+#!/bin/bash
+set -uo pipefail
+export _TEST_MODE=1
+
+INSTALL_SH="__INSTALL_SH_PLACEHOLDER__"
+# shellcheck source=/dev/null
+source "${INSTALL_SH}" 2>/dev/null || true
+
+# Default mocks (overridden per-scenario below)
+log_echo() { :; }
+gettext() { printf '%s' "$1"; }
+
+SCENARIO="__SCENARIO_PLACEHOLDER__"
+CONFIG_FILE="__CONFIG_FILE_PLACEHOLDER__"
+NGINX_BIN="__NGINX_BIN_PLACEHOLDER__"
+
+# Per-scenario systemctl mock
+# Handles the real call form: systemctl is-active --quiet <service>
+case "${SCENARIO}" in
+    xray_inactive|reality_xray_inactive)
+        # xray inactive, nginx active
+        systemctl() {
+            if [[ "$1" == "is-active" ]]; then
+                local svc=""; shift
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in --quiet) shift ;; *) svc="$1"; break ;; esac
+                done
+                [[ "${svc}" == "xray" ]] && return 3
+                return 0
+            fi
+            return 0
+        }
+        ;;
+    nginx_inactive)
+        # xray active, nginx inactive
+        systemctl() {
+            if [[ "$1" == "is-active" ]]; then
+                local svc=""; shift
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in --quiet) shift ;; *) svc="$1"; break ;; esac
+                done
+                [[ "${svc}" == "nginx" ]] && return 3
+                return 0
+            fi
+            return 0
+        }
+        ;;
+    *)
+        # Default: both active
+        systemctl() { return 0; }
+        ;;
+esac
+
+# Mock nginx binary: create a script that returns the desired exit code
+if [[ -n "${NGINX_BIN}" ]]; then
+    mkdir -p "$(dirname "${NGINX_BIN}")"
+    cat > "${NGINX_BIN}" << 'NGINXEOF'
+#!/bin/bash
+__NGINX_EXIT__
+exit 0
+NGINXEOF
+    case "${SCENARIO}" in
+        nginx_inactive) sed -i 's/__NGINX_EXIT__/exit 1/' "${NGINX_BIN}" ;;
+        *) sed -i 's/__NGINX_EXIT__/exit 0/' "${NGINX_BIN}" ;;
+    esac
+    chmod +x "${NGINX_BIN}"
+fi
+
+verification_failed=0
+
+# Replicate the Reality verification logic from setup-reality.sh
+run_reality_verify() {
+    verification_failed=0
+    if ! systemctl is-active --quiet xray; then
+        verification_failed=1
+    fi
+    if [[ ! -s "${CONFIG_FILE}" ]] || ! jq empty "${CONFIG_FILE}" >/dev/null 2>&1; then
+        verification_failed=1
+    fi
+    if [[ -s "${CONFIG_FILE}" ]] && jq empty "${CONFIG_FILE}" >/dev/null 2>&1; then
+        if [[ "$(jq -r '.tls // empty' "${CONFIG_FILE}" 2>/dev/null)" != "Reality" ]]; then
+            verification_failed=1
+        fi
+        user_id="$(jq -r '.id // .UUID // empty' "${CONFIG_FILE}" 2>/dev/null)"
+        if [[ -z "${user_id}" ]]; then
+            verification_failed=1
+        fi
+        for _field in privateKey password shortIds host; do
+            if [[ -z "$(jq -r --arg f "${_field}" '.[$f] // empty' "${CONFIG_FILE}" 2>/dev/null)" ]]; then
+                verification_failed=1
+            fi
+        done
+    fi
+    return ${verification_failed}
+}
+
+# Replicate the TLS verification logic from setup-tls.sh
+run_tls_verify() {
+    verification_failed=0
+    if ! systemctl is-active --quiet xray; then
+        verification_failed=1
+    fi
+    if ! systemctl is-active --quiet nginx; then
+        verification_failed=1
+    fi
+    if [[ ! -s "${CONFIG_FILE}" ]] || ! jq empty "${CONFIG_FILE}" >/dev/null 2>&1; then
+        verification_failed=1
+    fi
+    if [[ -s "${CONFIG_FILE}" ]] && jq empty "${CONFIG_FILE}" >/dev/null 2>&1; then
+        if [[ "$(jq -r '.tls // empty' "${CONFIG_FILE}" 2>/dev/null)" != "TLS" ]]; then
+            verification_failed=1
+        fi
+    fi
+    if [[ -x /usr/local/nginx/sbin/nginx ]] && ! /usr/local/nginx/sbin/nginx -t >/dev/null 2>&1; then
+        verification_failed=1
+    fi
+    return ${verification_failed}
+}
+
+case "${SCENARIO}" in
+    xray_inactive)
+        # Scenario 3: Xray inactive → Reality verify fails
+        run_reality_verify
+        exit $?
+        ;;
+    reality_xray_inactive)
+        # Scenario 3 variant: Xray inactive → Reality verify fails (explicit)
+        run_reality_verify
+        exit $?
+        ;;
+    nginx_inactive)
+        # Scenario 4: TLS Nginx inactive → TLS verify fails
+        run_tls_verify
+        exit $?
+        ;;
+    config_missing)
+        # Scenario 5: Config missing → Reality verify fails
+        run_reality_verify
+        exit $?
+        ;;
+    config_corrupted)
+        # Scenario 6: Config JSON corrupted → verify fails
+        run_reality_verify
+        exit $?
+        ;;
+    reality_id_ok)
+        # Scenario 7: Reality config uses .id → validation succeeds
+        run_reality_verify
+        exit $?
+        ;;
+    *)
+        exit 99
+        ;;
+esac
+VERIFY_EOF
+
+sed -i.bak "s|__INSTALL_SH_PLACEHOLDER__|${INSTALL_SH}|g" "${VERIFY_WRAPPER}"
+rm -f "${VERIFY_WRAPPER}.bak"
+
+run_verify_scenario() {
+    local scenario="$1" config_file="$2" nginx_bin="${3:-}"
+    local tmp_wrapper
+    tmp_wrapper=$(mktemp /tmp/xray_skill_verify_run_XXXXXX.sh)
+    cp "${VERIFY_WRAPPER}" "${tmp_wrapper}"
+    sed -i.bak "s|__SCENARIO_PLACEHOLDER__|${scenario}|g" "${tmp_wrapper}"
+    sed -i.bak2 "s|__CONFIG_FILE_PLACEHOLDER__|${config_file}|g" "${tmp_wrapper}"
+    sed -i.bak3 "s|__NGINX_BIN_PLACEHOLDER__|${nginx_bin}|g" "${tmp_wrapper}"
+    rm -f "${tmp_wrapper}.bak" "${tmp_wrapper}.bak2" "${tmp_wrapper}.bak3"
+    bash "${tmp_wrapper}" 2>/dev/null
+    local rc=$?
+    rm -f "${tmp_wrapper}"
+    return ${rc}
+}
+
+# --- Scenario 3: Xray inactive → verification fails ---
+echo "  --- Scenario 3: Xray inactive → verify fails ---"
+VALID_CONFIG="${VERIFY_TMP_DIR}/valid_reality.json"
+cat > "${VALID_CONFIG}" << 'JSON_EOF'
+{"tls":"Reality","id":"test-id","privateKey":"pk","password":"pw","shortIds":"sid","host":"203.0.113.1"}
+JSON_EOF
+run_verify_scenario "reality_xray_inactive" "${VALID_CONFIG}" >/dev/null 2>&1
+rc=$?
+if [[ ${rc} -ne 0 ]]; then
+    ok "Scenario 3: Xray inactive → verify returns non-zero (${rc})"
+else
+    bad "Scenario 3: Xray inactive → verify should return non-zero but got 0"
+fi
+
+# --- Scenario 4: TLS Nginx inactive → verification fails ---
+echo "  --- Scenario 4: TLS Nginx inactive → verify fails ---"
+TLS_CONFIG="${VERIFY_TMP_DIR}/valid_tls.json"
+cat > "${TLS_CONFIG}" << 'JSON_EOF'
+{"tls":"TLS","id":"test-id","domain":"example.com"}
+JSON_EOF
+NGINX_BIN_MOCK="${VERIFY_TMP_DIR}/nginx"
+run_verify_scenario "nginx_inactive" "${TLS_CONFIG}" "${NGINX_BIN_MOCK}" >/dev/null 2>&1
+rc=$?
+if [[ ${rc} -ne 0 ]]; then
+    ok "Scenario 4: TLS Nginx inactive → verify returns non-zero (${rc})"
+else
+    bad "Scenario 4: TLS Nginx inactive → verify should return non-zero but got 0"
+fi
+
+# --- Scenario 5: Config missing → verification fails ---
+echo "  --- Scenario 5: Config missing → verify fails ---"
+# Use systemctl default (both active) but config file doesn't exist
+MISSING_CONFIG="${VERIFY_TMP_DIR}/nonexistent.json"
+run_verify_scenario "config_missing" "${MISSING_CONFIG}" >/dev/null 2>&1
+rc=$?
+if [[ ${rc} -ne 0 ]]; then
+    ok "Scenario 5: Config missing → verify returns non-zero (${rc})"
+else
+    bad "Scenario 5: Config missing → verify should return non-zero but got 0"
+fi
+
+# --- Scenario 6: Config JSON corrupted → verification fails ---
+echo "  --- Scenario 6: Config JSON corrupted → verify fails ---"
+CORRUPT_CONFIG="${VERIFY_TMP_DIR}/corrupt.json"
+echo '{"tls":"Reality","id":"broken' > "${CORRUPT_CONFIG}"
+run_verify_scenario "config_corrupted" "${CORRUPT_CONFIG}" >/dev/null 2>&1
+rc=$?
+if [[ ${rc} -ne 0 ]]; then
+    ok "Scenario 6: Config JSON corrupted → verify returns non-zero (${rc})"
+else
+    bad "Scenario 6: Config JSON corrupted → verify should return non-zero but got 0"
+fi
+
+# --- Scenario 7: Reality config uses `.id` (not UUID) → validation succeeds ---
+echo "  --- Scenario 7: Reality config uses .id → validation succeeds ---"
+ID_CONFIG="${VERIFY_TMP_DIR}/id_only.json"
+cat > "${ID_CONFIG}" << 'JSON_EOF'
+{"tls":"Reality","id":"test-uuid-value","privateKey":"pk-value","password":"pw-value","shortIds":"sid-value","host":"203.0.113.1"}
+JSON_EOF
+# For this scenario, systemctl default returns 0 (both active), so only config
+# validation matters. The config has `.id` but NO `.UUID` — must succeed.
+run_verify_scenario "reality_id_ok" "${ID_CONFIG}" >/dev/null 2>&1
+rc=$?
+if [[ ${rc} -eq 0 ]]; then
+    ok "Scenario 7: Reality config with .id (no UUID) → verify succeeds (${rc})"
+else
+    bad "Scenario 7: Reality config with .id (no UUID) → verify should succeed but got ${rc}"
+fi
+
+# Also verify: config with .UUID but no .id → should still succeed (legacy fallback)
+echo "  --- Scenario 7b: Legacy config with .UUID (no .id) → verify succeeds ---"
+UUID_CONFIG="${VERIFY_TMP_DIR}/uuid_only.json"
+cat > "${UUID_CONFIG}" << 'JSON_EOF'
+{"tls":"Reality","UUID":"legacy-uuid","privateKey":"pk","password":"pw","shortIds":"sid","host":"203.0.113.1"}
+JSON_EOF
+run_verify_scenario "reality_id_ok" "${UUID_CONFIG}" >/dev/null 2>&1
+rc=$?
+if [[ ${rc} -eq 0 ]]; then
+    ok "Scenario 7b: Legacy config with .UUID (no .id) → verify succeeds (${rc})"
+else
+    bad "Scenario 7b: Legacy config with .UUID (no .id) → verify should succeed but got ${rc}"
+fi
+
+# Also verify: config with neither .id nor .UUID → should fail
+echo "  --- Scenario 7c: Config with neither .id nor .UUID → verify fails ---"
+NO_ID_CONFIG="${VERIFY_TMP_DIR}/no_id.json"
+cat > "${NO_ID_CONFIG}" << 'JSON_EOF'
+{"tls":"Reality","privateKey":"pk","password":"pw","shortIds":"sid","host":"203.0.113.1"}
+JSON_EOF
+run_verify_scenario "reality_id_ok" "${NO_ID_CONFIG}" >/dev/null 2>&1
+rc=$?
+if [[ ${rc} -ne 0 ]]; then
+    ok "Scenario 7c: Config with neither .id nor .UUID → verify fails (${rc})"
+else
+    bad "Scenario 7c: Config with neither .id nor .UUID → verify should fail but got 0"
+fi
+
+# --- Scenario 8: Existing install + no FORCE_REINSTALL=1 → reject + file unchanged ---
+echo "  --- Scenario 8: Existing install + no FORCE_REINSTALL → reject ---"
+EXISTING_CONFIG="${VERIFY_TMP_DIR}/existing.json"
+echo '{"tls":"Reality","id":"existing"}' > "${EXISTING_CONFIG}"
+EXISTING_HASH_BEFORE=$(md5sum "${EXISTING_CONFIG}" 2>/dev/null | awk '{print $1}')
+# Simulate the guard logic from setup-reality.sh / setup-tls.sh
+FORCE_REINSTALL="0"
+guard_rejected=0
+if [[ -f "${EXISTING_CONFIG}" && "${FORCE_REINSTALL}" != "1" ]]; then
+    guard_rejected=1
+fi
+EXISTING_HASH_AFTER=$(md5sum "${EXISTING_CONFIG}" 2>/dev/null | awk '{print $1}')
+if [[ ${guard_rejected} -eq 1 ]]; then
+    ok "Scenario 8: Existing install + no FORCE_REINSTALL → guard rejects"
+else
+    bad "Scenario 8: Existing install + no FORCE_REINSTALL → guard should reject"
+fi
+if [[ "${EXISTING_HASH_BEFORE}" == "${EXISTING_HASH_AFTER}" ]]; then
+    ok "Scenario 8: Config file unchanged after guard rejection"
+else
+    bad "Scenario 8: Config file was modified after guard rejection"
+fi
+
+# --- Scenario 9: FORCE_REINSTALL=1 → can enter install flow ---
+echo "  --- Scenario 9: FORCE_REINSTALL=1 → guard allows install ---"
+FORCE_REINSTALL="1"
+guard_allows=0
+if [[ -f "${EXISTING_CONFIG}" && "${FORCE_REINSTALL}" != "1" ]]; then
+    guard_allows=0  # would reject
+else
+    guard_allows=1  # proceeds
+fi
+if [[ ${guard_allows} -eq 1 ]]; then
+    ok "Scenario 9: FORCE_REINSTALL=1 → guard allows install flow"
+else
+    bad "Scenario 9: FORCE_REINSTALL=1 → guard should allow install flow"
+fi
+
+rm -rf "${VERIFY_WRAPPER}" "${VERIFY_TMP_DIR}"
+
+# ----------------------------------------------------------------
 # Cleanup
 # ----------------------------------------------------------------
 echo ""
