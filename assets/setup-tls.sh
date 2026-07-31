@@ -43,6 +43,19 @@ TRANSPORT_MODE="wsgRPCxhttp"
 INSTALL_SH_REF="${INSTALL_SH_REF:-main}"
 
 # ============================================================
+# Guard against overwriting an existing installation
+# ============================================================
+
+CONFIG_FILE="/etc/idleleo/conf/install_config.json"
+FORCE_REINSTALL="${FORCE_REINSTALL:-0}"
+
+if [[ -f "${CONFIG_FILE}" && "${FORCE_REINSTALL}" != "1" ]]; then
+    echo "❌ Existing installation detected at ${CONFIG_FILE}"
+    echo "Set FORCE_REINSTALL=1 only when replacement is intentional."
+    exit 1
+fi
+
+# ============================================================
 # Download and source install.sh
 # ============================================================
 
@@ -69,6 +82,10 @@ source "${INSTALL_SH}"
 # ============================================================
 
 old_config_exist_check() {
+    if [[ -f "${CONFIG_FILE}" && "${FORCE_REINSTALL}" != "1" ]]; then
+        echo "❌ Existing installation detected; refusing to overwrite."
+        return 1
+    fi
     old_config_status="off"
 }
 
