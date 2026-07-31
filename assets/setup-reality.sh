@@ -38,6 +38,19 @@ UUID=""  # Leave empty for auto-generation
 INSTALL_SH_REF="${INSTALL_SH_REF:-main}"
 
 # ============================================================
+# Guard against overwriting an existing installation
+# ============================================================
+
+CONFIG_FILE="/etc/idleleo/conf/install_config.json"
+FORCE_REINSTALL="${FORCE_REINSTALL:-0}"
+
+if [[ -f "${CONFIG_FILE}" && "${FORCE_REINSTALL}" != "1" ]]; then
+    echo "❌ Existing installation detected at ${CONFIG_FILE}"
+    echo "Set FORCE_REINSTALL=1 only when replacement is intentional."
+    exit 1
+fi
+
+# ============================================================
 # Download and source install.sh
 # ============================================================
 
@@ -64,6 +77,10 @@ source "${INSTALL_SH}"
 # ============================================================
 
 old_config_exist_check() {
+    if [[ -f "${CONFIG_FILE}" && "${FORCE_REINSTALL}" != "1" ]]; then
+        echo "❌ Existing installation detected; refusing to overwrite."
+        return 1
+    fi
     old_config_status="off"
 }
 
@@ -190,28 +207,61 @@ vless_link_image_choice() {
 # ============================================================
 
 echo "[4/6] Running Reality mode installation..."
-install_xray_reality
+if ! install_xray_reality; then
+    echo "❌ Reality installation failed"
+    rm -f "${INSTALL_SH}"
+    exit 1
+fi
 
 # ============================================================
 # Verify and report (safe — no secrets)
 # ============================================================
 
 echo "[5/6] Verifying installation..."
-if systemctl is-active xray >/dev/null 2>&1; then
-    echo "  ✅ Xray service is running"
-else
+verification_failed=0
+
+if ! systemctl is-active --quiet xray; then
     echo "  ❌ Xray service is NOT running"
-    # Contract: do NOT output unredacted journalctl — it may contain secrets.
-    # Suggest the user run the redacted diagnostic command manually.
-    echo "  ℹ️  For safe diagnostics, run:"
-    echo "      journalctl -u xray -e --no-pager | redact_text_for_diagnostics"
-    echo "      (Source .github/test/redact.sh from the main repo first.)"
+    verification_failed=1
+else
+    echo "  ✅ Xray service is running"
+fi
+
+if [[ ! -s "${CONFIG_FILE}" ]] || ! jq empty "${CONFIG_FILE}" >/dev/null 2>&1; then
+    echo "  ❌ Installation config is missing or invalid"
+    verification_failed=1
+fi
+
+if [[ -s "${CONFIG_FILE}" ]] && jq empty "${CONFIG_FILE}" >/dev/null 2>&1; then
+    if [[ "$(jq -r '.tls // empty' "${CONFIG_FILE}" 2>/dev/null)" != "Reality" ]]; then
+        echo "  ❌ Installation config tls field is not Reality"
+        verification_failed=1
+    fi
+    # Contract: install_config.json stores the Reality user id under the field
+    # name "id" (NOT "UUID"). Accept "UUID" only as a legacy fallback so older
+    # configs are not falsely flagged. A normal Reality install must NOT fail
+    # merely because ".UUID" is absent when ".id" is present.
+    user_id="$(jq -r '.id // .UUID // empty' "${CONFIG_FILE}" 2>/dev/null)"
+    if [[ -z "${user_id}" ]]; then
+        echo "  ❌ Required field missing or empty: id"
+        verification_failed=1
+    fi
+    for _field in privateKey password shortIds host; do
+        if [[ -z "$(jq -r --arg f "${_field}" '.[$f] // empty' "${CONFIG_FILE}" 2>/dev/null)" ]]; then
+            echo "  ❌ Required field missing or empty: ${_field}"
+            verification_failed=1
+        fi
+    done
+fi
+
+if (( verification_failed != 0 )); then
+    rm -f "${INSTALL_SH}"
+    exit 1
 fi
 
 echo "[6/6] Installation summary (secrets suppressed):"
 # Contract: do NOT cat the full install_config.json — it contains UUID, privateKey,
 # password, shortIds, host, and other secrets. Output a safe summary instead.
-CONFIG_FILE="/etc/idleleo/conf/install_config.json"
 if [[ -f "${CONFIG_FILE}" ]]; then
     # Try to print a safe summary using jq if available.
     if command -v jq >/dev/null 2>&1; then
