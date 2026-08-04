@@ -47,40 +47,16 @@ INSTALL_SH_REF="${INSTALL_SH_REF:-main}"
 # ============================================================
 
 CONFIG_FILE="/etc/idleleo/conf/install_config.json"
-# INSTALL_MODE controls how an existing installation is handled:
-#   NEW_INSTALL (default)       — refuse if an installation already exists
-#   REINSTALL_KEEP_CONFIG       — not supported by this template; use 'idleleo' on the server
-#   CHANGE_MODE                 — not supported by this template; use 'idleleo' on the server
-#   CLEAN_INSTALL               — replace existing installation (requires CONFIRM_CLEAN_INSTALL=1)
-INSTALL_MODE="${INSTALL_MODE:-NEW_INSTALL}"
 
+# Skill templates only support new installations. For any existing
+# installation (regardless of INSTALL_MODE), refuse and direct the user
+# to run 'idleleo' on the server for safe reconfiguration.
 if [[ -f "${CONFIG_FILE}" ]]; then
-    case "${INSTALL_MODE}" in
-        NEW_INSTALL)
-            echo "❌ Existing installation detected at ${CONFIG_FILE}"
-            echo "This template only supports new installations."
-            echo "To reinstall keeping config or switch modes, run 'idleleo' on the server."
-            echo "To force a clean replacement, set INSTALL_MODE=CLEAN_INSTALL and CONFIRM_CLEAN_INSTALL=1."
-            exit 1
-            ;;
-        CLEAN_INSTALL)
-            if [[ "${CONFIRM_CLEAN_INSTALL:-0}" != "1" ]]; then
-                echo "❌ CLEAN_INSTALL requires CONFIRM_CLEAN_INSTALL=1 to confirm replacement."
-                exit 1
-            fi
-            echo "⚠️  Replacing existing installation (CLEAN_INSTALL confirmed)."
-            ;;
-        REINSTALL_KEEP_CONFIG|CHANGE_MODE)
-            echo "ℹ️  ${INSTALL_MODE} is not supported by this template."
-            echo "To reinstall keeping config or switch modes, run 'idleleo' on the server."
-            exit 1
-            ;;
-        *)
-            echo "❌ Unknown INSTALL_MODE: ${INSTALL_MODE}"
-            echo "Valid values: NEW_INSTALL (default), CLEAN_INSTALL, REINSTALL_KEEP_CONFIG, CHANGE_MODE"
-            exit 1
-            ;;
-    esac
+    echo "❌ Existing installation detected at ${CONFIG_FILE}"
+    echo "Skill templates only support new installations."
+    echo "To reinstall, change mode, or clean install, run 'idleleo' on the server."
+    echo "The main script provides verified transactional reconfiguration with backup and rollback."
+    exit 1
 fi
 
 # ============================================================
@@ -110,8 +86,8 @@ source "${INSTALL_SH}"
 # ============================================================
 
 old_config_exist_check() {
-    # The guard block above already handled existing installations.
-    # If we reach here, either no installation exists or CLEAN_INSTALL was confirmed.
+    # The guard block above already rejected any existing installation.
+    # If we reach here, no installation exists.
     old_config_status="off"
 }
 

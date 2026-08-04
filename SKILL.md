@@ -30,7 +30,7 @@ Core technology: Uses install.sh's built-in `_TEST_MODE=1` mechanism. After sour
 **Inappropriate scenarios**:
 - Server is not Linux (Windows/macOS not supported)
 - Need fine-grained custom configuration beyond the 4 modes
-- Already have a working Xray setup (use `idleleo` management command instead)
+- Already have a working Xray setup — Skill templates refuse to proceed when an existing installation is detected; use `idleleo` management command on the server for reconfiguration, mode changes, or clean installs
 
 ## Project Overview
 
@@ -137,6 +137,7 @@ For detailed mode call chains and variable references, see `references/modes.md`
 
 #### Critical Rules for Script Generation
 
+- **New installations only**: Skill templates only support new installations. If `/etc/idleleo/conf/install_config.json` already exists, the template refuses to proceed (regardless of any mode setting) and directs the user to run `idleleo` on the server. There is no bypass — reinstall, mode change, and clean install must all be done via `idleleo`, which provides verified transactional reconfiguration with backup and rollback.
 - Set `old_config_status="off"` to skip all old-config-related interactions
 - Override `firewall_set` as no-op — user can configure later via `idleleo`
 - `keys_set` override must still call `${xray_bin_dir}/xray x25519` — keys cannot be pre-set. Use the project's `parse_reality_public_key` helper to handle Xray version differences. Variables are `privateKey` (camelCase) and `password` (which holds the public key), NOT `private_key`/`public_key`. **Do NOT echo `privateKey` or `password` to stdout — they are secrets.**
