@@ -206,7 +206,7 @@ shell_mode="Reality"
 tls_mode="reality"
 # Point CONFIG_FILE to a non-existent path so the install guard does not trigger
 CONFIG_FILE="/tmp/xray_test_nonexistent_config_$$.json"
-FORCE_REINSTALL="0"
+INSTALL_MODE="NEW_INSTALL"
 
 # --- Call the REAL install_xray_reality ---
 install_xray_reality
@@ -396,7 +396,7 @@ tls_mode="tls"
 local_ip="203.0.113.1"
 # Point CONFIG_FILE to a non-existent path so the install guard does not trigger
 CONFIG_FILE="/tmp/xray_test_nonexistent_config_$$.json"
-FORCE_REINSTALL="0"
+INSTALL_MODE="NEW_INSTALL"
 
 # --- Call the REAL install_xray_ws_tls ---
 install_xray_ws_tls
@@ -626,7 +626,7 @@ random_num="${random_num:-8}"
 xray_online_version="25.12.8"
 old_config_status="off"
 CONFIG_FILE="/tmp/xray_test_fail_config_$$.json"
-FORCE_REINSTALL="0"
+INSTALL_MODE="NEW_INSTALL"
 PORT="443"
 TARGET="www.microsoft.com"
 SERVERNAMES="www.microsoft.com"
