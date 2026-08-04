@@ -539,8 +539,8 @@ fi
 #   6. Config JSON corrupted → returns non-zero
 #   7. Reality config uses `.id` → validation succeeds
 #   8. Existing install + INSTALL_MODE=NEW_INSTALL → reject + file unchanged
-#   9. INSTALL_MODE=CLEAN_INSTALL + CONFIRM_CLEAN_INSTALL=1 → can enter install flow
-#  10. INSTALL_MODE=CLEAN_INSTALL without CONFIRM_CLEAN_INSTALL=1 → reject
+#   9. Existing install + CLEAN_INSTALL + CONFIRM_CLEAN_INSTALL=1 → reject (no bypass)
+#  10. Existing install + INSTALL_MODE=anything → reject (always)
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 15: Fail-closed verification scenarios ---"
@@ -826,16 +826,12 @@ echo "  --- Scenario 8: Existing install + INSTALL_MODE=NEW_INSTALL → reject -
 EXISTING_CONFIG="${VERIFY_TMP_DIR}/existing.json"
 echo '{"tls":"Reality","id":"existing"}' > "${EXISTING_CONFIG}"
 EXISTING_HASH_BEFORE=$(md5sum "${EXISTING_CONFIG}" 2>/dev/null | awk '{print $1}')
-# Simulate the guard logic from setup-reality.sh / setup-tls.sh
+# Simulate the simplified guard logic from setup-reality.sh / setup-tls.sh:
+# any existing installation is rejected regardless of INSTALL_MODE.
 INSTALL_MODE="NEW_INSTALL"
 guard_rejected=0
 if [[ -f "${EXISTING_CONFIG}" ]]; then
-    case "${INSTALL_MODE}" in
-        NEW_INSTALL) guard_rejected=1 ;;
-        CLEAN_INSTALL)
-            [[ "${CONFIRM_CLEAN_INSTALL:-0}" != "1" ]] && guard_rejected=1
-            ;;
-    esac
+    guard_rejected=1
 fi
 EXISTING_HASH_AFTER=$(md5sum "${EXISTING_CONFIG}" 2>/dev/null | awk '{print $1}')
 if [[ ${guard_rejected} -eq 1 ]]; then
@@ -849,44 +845,31 @@ else
     bad "Scenario 8: Config file was modified after guard rejection"
 fi
 
-# --- Scenario 9: INSTALL_MODE=CLEAN_INSTALL + CONFIRM_CLEAN_INSTALL=1 → can enter install flow ---
-echo "  --- Scenario 9: INSTALL_MODE=CLEAN_INSTALL + CONFIRM → guard allows install ---"
+# --- Scenario 9: Existing install + CLEAN_INSTALL + CONFIRM_CLEAN_INSTALL=1 → reject ---
+echo "  --- Scenario 9: Existing install + CLEAN_INSTALL + CONFIRM → reject ---"
 INSTALL_MODE="CLEAN_INSTALL"
 CONFIRM_CLEAN_INSTALL="1"
-guard_allows=0
-if [[ -f "${EXISTING_CONFIG}" ]]; then
-    case "${INSTALL_MODE}" in
-        NEW_INSTALL) guard_allows=0 ;;
-        CLEAN_INSTALL)
-            [[ "${CONFIRM_CLEAN_INSTALL:-0}" == "1" ]] && guard_allows=1
-            ;;
-    esac
-else
-    guard_allows=1
-fi
-if [[ ${guard_allows} -eq 1 ]]; then
-    ok "Scenario 9: INSTALL_MODE=CLEAN_INSTALL + CONFIRM → guard allows install flow"
-else
-    bad "Scenario 9: INSTALL_MODE=CLEAN_INSTALL + CONFIRM → guard should allow install flow"
-fi
-
-# --- Scenario 10: INSTALL_MODE=CLEAN_INSTALL without CONFIRM_CLEAN_INSTALL=1 → reject ---
-echo "  --- Scenario 10: INSTALL_MODE=CLEAN_INSTALL without CONFIRM → reject ---"
-INSTALL_MODE="CLEAN_INSTALL"
-CONFIRM_CLEAN_INSTALL="0"
 guard_rejected=0
 if [[ -f "${EXISTING_CONFIG}" ]]; then
-    case "${INSTALL_MODE}" in
-        NEW_INSTALL) guard_rejected=1 ;;
-        CLEAN_INSTALL)
-            [[ "${CONFIRM_CLEAN_INSTALL:-0}" != "1" ]] && guard_rejected=1
-            ;;
-    esac
+    guard_rejected=1
 fi
 if [[ ${guard_rejected} -eq 1 ]]; then
-    ok "Scenario 10: CLEAN_INSTALL without CONFIRM → guard rejects"
+    ok "Scenario 9: Existing install + CLEAN_INSTALL + CONFIRM → guard rejects (no bypass)"
 else
-    bad "Scenario 10: CLEAN_INSTALL without CONFIRM → guard should reject"
+    bad "Scenario 9: Existing install + CLEAN_INSTALL + CONFIRM → guard should reject"
+fi
+
+# --- Scenario 10: Existing install + INSTALL_MODE=anything → reject ---
+echo "  --- Scenario 10: Existing install + INSTALL_MODE=anything → reject ---"
+INSTALL_MODE="some-random-mode"
+guard_rejected=0
+if [[ -f "${EXISTING_CONFIG}" ]]; then
+    guard_rejected=1
+fi
+if [[ ${guard_rejected} -eq 1 ]]; then
+    ok "Scenario 10: Existing install + any INSTALL_MODE → guard rejects"
+else
+    bad "Scenario 10: Existing install + any INSTALL_MODE → guard should reject"
 fi
 
 rm -rf "${VERIFY_WRAPPER}" "${VERIFY_TMP_DIR}"
