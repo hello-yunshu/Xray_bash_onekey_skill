@@ -7,7 +7,7 @@
 #   2. Replace all <PLACEHOLDER> values with actual user preferences
 #   3. Adjust override functions if the source has changed
 #
-# Contract-verified against install.sh v2.12.10+:
+# Contract-verified against install.sh (read actual install.sh before use):
 #   - install_config.json path: /etc/idleleo/conf/install_config.json (NOT /etc/idleleo/info/)
 #   - Nginx binary path: /usr/local/nginx/sbin/nginx (NOT /etc/idleleo/nginx/sbin/nginx)
 #   - UUIDv5_tranc requires an argument (random UUIDv5 char string)
@@ -47,12 +47,40 @@ INSTALL_SH_REF="${INSTALL_SH_REF:-main}"
 # ============================================================
 
 CONFIG_FILE="/etc/idleleo/conf/install_config.json"
-FORCE_REINSTALL="${FORCE_REINSTALL:-0}"
+# INSTALL_MODE controls how an existing installation is handled:
+#   NEW_INSTALL (default)       — refuse if an installation already exists
+#   REINSTALL_KEEP_CONFIG       — not supported by this template; use 'idleleo' on the server
+#   CHANGE_MODE                 — not supported by this template; use 'idleleo' on the server
+#   CLEAN_INSTALL               — replace existing installation (requires CONFIRM_CLEAN_INSTALL=1)
+INSTALL_MODE="${INSTALL_MODE:-NEW_INSTALL}"
 
-if [[ -f "${CONFIG_FILE}" && "${FORCE_REINSTALL}" != "1" ]]; then
-    echo "❌ Existing installation detected at ${CONFIG_FILE}"
-    echo "Set FORCE_REINSTALL=1 only when replacement is intentional."
-    exit 1
+if [[ -f "${CONFIG_FILE}" ]]; then
+    case "${INSTALL_MODE}" in
+        NEW_INSTALL)
+            echo "❌ Existing installation detected at ${CONFIG_FILE}"
+            echo "This template only supports new installations."
+            echo "To reinstall keeping config or switch modes, run 'idleleo' on the server."
+            echo "To force a clean replacement, set INSTALL_MODE=CLEAN_INSTALL and CONFIRM_CLEAN_INSTALL=1."
+            exit 1
+            ;;
+        CLEAN_INSTALL)
+            if [[ "${CONFIRM_CLEAN_INSTALL:-0}" != "1" ]]; then
+                echo "❌ CLEAN_INSTALL requires CONFIRM_CLEAN_INSTALL=1 to confirm replacement."
+                exit 1
+            fi
+            echo "⚠️  Replacing existing installation (CLEAN_INSTALL confirmed)."
+            ;;
+        REINSTALL_KEEP_CONFIG|CHANGE_MODE)
+            echo "ℹ️  ${INSTALL_MODE} is not supported by this template."
+            echo "To reinstall keeping config or switch modes, run 'idleleo' on the server."
+            exit 1
+            ;;
+        *)
+            echo "❌ Unknown INSTALL_MODE: ${INSTALL_MODE}"
+            echo "Valid values: NEW_INSTALL (default), CLEAN_INSTALL, REINSTALL_KEEP_CONFIG, CHANGE_MODE"
+            exit 1
+            ;;
+    esac
 fi
 
 # ============================================================
@@ -82,10 +110,8 @@ source "${INSTALL_SH}"
 # ============================================================
 
 old_config_exist_check() {
-    if [[ -f "${CONFIG_FILE}" && "${FORCE_REINSTALL}" != "1" ]]; then
-        echo "❌ Existing installation detected; refusing to overwrite."
-        return 1
-    fi
+    # The guard block above already handled existing installations.
+    # If we reach here, either no installation exists or CLEAN_INSTALL was confirmed.
     old_config_status="off"
 }
 
@@ -268,7 +294,7 @@ if [[ -f "${CONFIG_FILE}" ]]; then
             "  transport_mode: \(.transport_mode // "unknown")",
             "  shell_version: \(.shell_version // "unknown")",
             "  xray_version: \(.xray_version // "unknown")",
-            "  has_UUID: \(.UUID // .uuid | type == "string")",
+            "  has_UUID: \(.id // .UUID // .uuid | type == "string")",
             "  has_privateKey: \(.privateKey | type == "string")",
             "  has_publicKey: \(.publicKey // .password | type == "string")",
             "  has_shortIds: \(.shortIds | type == "string")",

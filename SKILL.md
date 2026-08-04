@@ -34,9 +34,10 @@ Core technology: Uses install.sh's built-in `_TEST_MODE=1` mechanism. After sour
 
 ## Project Overview
 
-**Xray_bash_onekey** (v2.12.10+) — one-click Xray installation and management script:
+**Xray_bash_onekey** — one-click Xray installation and management script:
 
 - **4 installation modes**: Reality, TLS (Nginx+ws/gRPC/xHTTP), ws/gRPC/xHTTP ONLY, XTLS ONLY
+- **Auto-deployment templates**: Reality and TLS (other modes can be set up via `idleleo` on the server)
 - **3 transport protocols**: WebSocket, gRPC, xHTTP (can be combined)
 - **Target systems**: Debian 12+ / Ubuntu 24.04+ / CentOS Stream 10+
 - **Main script**: `install.sh` | **Management command**: `idleleo`
@@ -55,7 +56,7 @@ Before generating any deployment script, verify these prerequisites. If any chec
 | 1 | **OS compatible** | `cat /etc/os-release` | Must be Debian 12+ / Ubuntu 24.04+ / CentOS Stream 10+ |
 | 2 | **Architecture** | `uname -m` | Must be x86_64 or aarch64 |
 | 3 | **Root access** | `id -u` | Must be 0 (root) |
-| 4 | **Port available** | `ss -tlnp \| grep <port>` | Kill conflicting process or choose different port |
+| 4 | **Port available** | `ss -tlnp \| grep <port>` | Port occupied by third-party service: do NOT stop it; choose a different port. Only stop if confirmed to belong to this project and user explicitly agrees |
 | 5 | **GitHub reachable** | `curl -I https://github.com` | Fix DNS or network, cannot proceed without |
 | 6 | **DNS resolves** (TLS only) | `dig +short <domain>` | Must point to server IP, wait for propagation |
 

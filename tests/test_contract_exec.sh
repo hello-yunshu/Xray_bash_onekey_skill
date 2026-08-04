@@ -538,8 +538,9 @@ fi
 #   5. Config missing → returns non-zero
 #   6. Config JSON corrupted → returns non-zero
 #   7. Reality config uses `.id` → validation succeeds
-#   8. Existing install + no FORCE_REINSTALL=1 → reject + file unchanged
-#   9. FORCE_REINSTALL=1 → can enter install flow
+#   8. Existing install + INSTALL_MODE=NEW_INSTALL → reject + file unchanged
+#   9. INSTALL_MODE=CLEAN_INSTALL + CONFIRM_CLEAN_INSTALL=1 → can enter install flow
+#  10. INSTALL_MODE=CLEAN_INSTALL without CONFIRM_CLEAN_INSTALL=1 → reject
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 15: Fail-closed verification scenarios ---"
@@ -820,22 +821,27 @@ else
     bad "Scenario 7c: Config with neither .id nor .UUID → verify should fail but got 0"
 fi
 
-# --- Scenario 8: Existing install + no FORCE_REINSTALL=1 → reject + file unchanged ---
-echo "  --- Scenario 8: Existing install + no FORCE_REINSTALL → reject ---"
+# --- Scenario 8: Existing install + INSTALL_MODE=NEW_INSTALL → reject + file unchanged ---
+echo "  --- Scenario 8: Existing install + INSTALL_MODE=NEW_INSTALL → reject ---"
 EXISTING_CONFIG="${VERIFY_TMP_DIR}/existing.json"
 echo '{"tls":"Reality","id":"existing"}' > "${EXISTING_CONFIG}"
 EXISTING_HASH_BEFORE=$(md5sum "${EXISTING_CONFIG}" 2>/dev/null | awk '{print $1}')
 # Simulate the guard logic from setup-reality.sh / setup-tls.sh
-FORCE_REINSTALL="0"
+INSTALL_MODE="NEW_INSTALL"
 guard_rejected=0
-if [[ -f "${EXISTING_CONFIG}" && "${FORCE_REINSTALL}" != "1" ]]; then
-    guard_rejected=1
+if [[ -f "${EXISTING_CONFIG}" ]]; then
+    case "${INSTALL_MODE}" in
+        NEW_INSTALL) guard_rejected=1 ;;
+        CLEAN_INSTALL)
+            [[ "${CONFIRM_CLEAN_INSTALL:-0}" != "1" ]] && guard_rejected=1
+            ;;
+    esac
 fi
 EXISTING_HASH_AFTER=$(md5sum "${EXISTING_CONFIG}" 2>/dev/null | awk '{print $1}')
 if [[ ${guard_rejected} -eq 1 ]]; then
-    ok "Scenario 8: Existing install + no FORCE_REINSTALL → guard rejects"
+    ok "Scenario 8: Existing install + INSTALL_MODE=NEW_INSTALL → guard rejects"
 else
-    bad "Scenario 8: Existing install + no FORCE_REINSTALL → guard should reject"
+    bad "Scenario 8: Existing install + INSTALL_MODE=NEW_INSTALL → guard should reject"
 fi
 if [[ "${EXISTING_HASH_BEFORE}" == "${EXISTING_HASH_AFTER}" ]]; then
     ok "Scenario 8: Config file unchanged after guard rejection"
@@ -843,19 +849,44 @@ else
     bad "Scenario 8: Config file was modified after guard rejection"
 fi
 
-# --- Scenario 9: FORCE_REINSTALL=1 → can enter install flow ---
-echo "  --- Scenario 9: FORCE_REINSTALL=1 → guard allows install ---"
-FORCE_REINSTALL="1"
+# --- Scenario 9: INSTALL_MODE=CLEAN_INSTALL + CONFIRM_CLEAN_INSTALL=1 → can enter install flow ---
+echo "  --- Scenario 9: INSTALL_MODE=CLEAN_INSTALL + CONFIRM → guard allows install ---"
+INSTALL_MODE="CLEAN_INSTALL"
+CONFIRM_CLEAN_INSTALL="1"
 guard_allows=0
-if [[ -f "${EXISTING_CONFIG}" && "${FORCE_REINSTALL}" != "1" ]]; then
-    guard_allows=0  # would reject
+if [[ -f "${EXISTING_CONFIG}" ]]; then
+    case "${INSTALL_MODE}" in
+        NEW_INSTALL) guard_allows=0 ;;
+        CLEAN_INSTALL)
+            [[ "${CONFIRM_CLEAN_INSTALL:-0}" == "1" ]] && guard_allows=1
+            ;;
+    esac
 else
-    guard_allows=1  # proceeds
+    guard_allows=1
 fi
 if [[ ${guard_allows} -eq 1 ]]; then
-    ok "Scenario 9: FORCE_REINSTALL=1 → guard allows install flow"
+    ok "Scenario 9: INSTALL_MODE=CLEAN_INSTALL + CONFIRM → guard allows install flow"
 else
-    bad "Scenario 9: FORCE_REINSTALL=1 → guard should allow install flow"
+    bad "Scenario 9: INSTALL_MODE=CLEAN_INSTALL + CONFIRM → guard should allow install flow"
+fi
+
+# --- Scenario 10: INSTALL_MODE=CLEAN_INSTALL without CONFIRM_CLEAN_INSTALL=1 → reject ---
+echo "  --- Scenario 10: INSTALL_MODE=CLEAN_INSTALL without CONFIRM → reject ---"
+INSTALL_MODE="CLEAN_INSTALL"
+CONFIRM_CLEAN_INSTALL="0"
+guard_rejected=0
+if [[ -f "${EXISTING_CONFIG}" ]]; then
+    case "${INSTALL_MODE}" in
+        NEW_INSTALL) guard_rejected=1 ;;
+        CLEAN_INSTALL)
+            [[ "${CONFIRM_CLEAN_INSTALL:-0}" != "1" ]] && guard_rejected=1
+            ;;
+    esac
+fi
+if [[ ${guard_rejected} -eq 1 ]]; then
+    ok "Scenario 10: CLEAN_INSTALL without CONFIRM → guard rejects"
+else
+    bad "Scenario 10: CLEAN_INSTALL without CONFIRM → guard should reject"
 fi
 
 rm -rf "${VERIFY_WRAPPER}" "${VERIFY_TMP_DIR}"
