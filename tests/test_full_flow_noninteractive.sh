@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Xray_bash_onekey_skill — Full-Flow Non-Interactive Test (P0-A)
+# Xray_bash_onekey_skill — Full-Flow Non-Interactive Test
 #
 # This test verifies that the Skill templates (setup-reality.sh and
 # setup-tls.sh) can drive the REAL install_xray_reality and
@@ -37,7 +37,7 @@ echo "============================================================"
 echo ""
 
 # ----------------------------------------------------------------
-# Section 1: Verify install.sh exists
+# Verify install.sh exists
 # ----------------------------------------------------------------
 echo "--- Section 1: Prerequisites ---"
 if [[ ! -f "${INSTALL_SH}" ]]; then
@@ -95,7 +95,7 @@ run_with_timeout() {
 ok "timeout mechanism available"
 
 # ----------------------------------------------------------------
-# Section 2: Build the Reality full-flow wrapper
+# Build the Reality full-flow wrapper
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 2: Reality full-flow with stdin closed ---"
@@ -297,7 +297,7 @@ fi
 rm -f "${REALITY_WRAPPER}"
 
 # ----------------------------------------------------------------
-# Section 3: Build the TLS full-flow wrapper
+# Build the TLS full-flow wrapper
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 3: TLS full-flow with stdin closed ---"
@@ -466,7 +466,7 @@ fi
 rm -f "${TLS_WRAPPER}"
 
 # ----------------------------------------------------------------
-# Section 4: Template syntax check
+# Template syntax check
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 4: Template syntax check ---"
@@ -479,7 +479,7 @@ for f in "${SKILL_REPO_ROOT}/assets/setup-reality.sh" "${SKILL_REPO_ROOT}/assets
 done
 
 # ----------------------------------------------------------------
-# Section 5: Verify all required overrides exist in templates
+# Verify all required overrides exist in templates
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 5: Override coverage check ---"
@@ -541,9 +541,9 @@ for func in "${TLS_REQUIRED_OVERRIDES[@]}"; do
 done
 
 # ----------------------------------------------------------------
-# Section 6: Fail-closed scenarios — install function returns non-zero
-#   Scenario 1: install_xray_reality fails → Skill must exit non-zero
-#   Scenario 2: install_xray_ws_tls fails → Skill must exit non-zero
+# Fail-closed scenarios — install function returns non-zero
+#   install_xray_reality fails → Skill must exit non-zero
+#   install_xray_ws_tls fails → Skill must exit non-zero
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 6: Fail-closed when install function returns non-zero ---"
@@ -659,7 +659,7 @@ esac
 rm -rf "${xray_bin_dir}"
 WRAPPER_EOF
 
-# --- Scenario 1: install_xray_reality fails ---
+# --- install_xray_reality fails ---
 sed -i.bak "s|__INSTALL_SH_PLACEHOLDER__|${INSTALL_SH}|g" "${FAIL_WRAPPER}"
 sed -i.bak2 "s|__SCENARIO_PLACEHOLDER__|reality_fail|g" "${FAIL_WRAPPER}"
 sed -i.bak3 "s|__TEMPLATE_PLACEHOLDER__|${SKILL_REPO_ROOT}/assets/setup-reality.sh|g" "${FAIL_WRAPPER}"
@@ -677,7 +677,7 @@ else
     bad "Scenario 1: fail-closed path NOT triggered"
 fi
 
-# --- Scenario 2: install_xray_ws_tls fails ---
+# --- install_xray_ws_tls fails ---
 sed -i.bak "s|__SCENARIO_PLACEHOLDER__|tls_fail|g" "${FAIL_WRAPPER}"
 sed -i.bak2 "s|__TEMPLATE_PLACEHOLDER__|${SKILL_REPO_ROOT}/assets/setup-tls.sh|g" "${FAIL_WRAPPER}"
 rm -f "${FAIL_WRAPPER}.bak" "${FAIL_WRAPPER}.bak2"
