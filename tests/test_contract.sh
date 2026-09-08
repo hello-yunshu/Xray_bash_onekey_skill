@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Xray_bash_onekey_skill — Contract Test (Task D, Section 8.4)
+# Xray_bash_onekey_skill — Contract Test
 #
 # Verifies that Skill templates and documentation match the actual install.sh
 # contract: paths, variable names, function signatures, transport_mode values,
@@ -62,13 +62,18 @@ echo "============================================================"
 echo ""
 
 # ----------------------------------------------------------------
-# Section 1: install.sh must exist locally (or fetch from GitHub)
+# install.sh must exist locally (or fetch from GitHub)
 # ----------------------------------------------------------------
 echo "--- Section 1: install.sh availability ---"
 if [[ ! -f "${INSTALL_SH}" ]]; then
     echo "  install.sh not found locally, fetching from GitHub..."
     INSTALL_SH="/tmp/install.sh.contract.$$"
-    if ! curl -fsSL "https://raw.githubusercontent.com/hello-yunshu/Xray_bash_onekey/main/install.sh" -o "${INSTALL_SH}"; then
+    API_JSON=$(curl -fsSL "https://raw.githubusercontent.com/hello-yunshu/Xray_bash_onekey_api/main/xray_shell_versions.json") || {
+        echo "  ❌ Cannot fetch Xray API metadata from GitHub. Aborting."
+        exit 1
+    }
+    XRAY_VERSION=$(printf '%s' "${API_JSON}" | jq -r '.shell_online_version')
+    if ! curl -fsSL "https://github.com/hello-yunshu/Xray_bash_onekey/releases/download/v${XRAY_VERSION}/install.sh" -o "${INSTALL_SH}"; then
         echo "  ❌ Cannot fetch install.sh from GitHub. Aborting."
         exit 1
     fi
@@ -79,7 +84,7 @@ fi
 assert_file_exists "${INSTALL_SH}"
 
 # ----------------------------------------------------------------
-# Section 2: Paths contract
+# Paths contract
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 2: install_config.json path (conf/, not info/) ---"
@@ -99,7 +104,7 @@ for f in "${SKILL_REPO_ROOT}/assets/setup-reality.sh" "${SKILL_REPO_ROOT}/assets
 done
 
 # ----------------------------------------------------------------
-# Section 3: Nginx binary path contract
+# Nginx binary path contract
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 3: Nginx binary path (/usr/local/nginx/sbin/nginx) ---"
@@ -122,7 +127,7 @@ for f in "${SKILL_REPO_ROOT}/assets/setup-tls.sh" "${SKILL_REPO_ROOT}/references
 done
 
 # ----------------------------------------------------------------
-# Section 4: UUIDv5_tranc requires an argument
+# UUIDv5_tranc requires an argument
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 4: UUIDv5_tranc signature ---"
@@ -143,7 +148,7 @@ for f in "${SKILL_REPO_ROOT}/assets/setup-reality.sh" "${SKILL_REPO_ROOT}/assets
 done
 
 # ----------------------------------------------------------------
-# Section 5: generate_random_port requires min/max
+# generate_random_port requires min/max
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 5: generate_random_port signature ---"
@@ -158,7 +163,7 @@ assert_grep_in_file 'generate_random_port [0-9]+ [0-9]+' "$f" \
     "$f passes min/max to generate_random_port"
 
 # ----------------------------------------------------------------
-# Section 6: transport_mode valid values
+# transport_mode valid values
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 6: transport_mode values ---"
@@ -180,7 +185,7 @@ for f in "${SKILL_REPO_ROOT}/references/modes.md" "${SKILL_REPO_ROOT}/SKILL.md" 
 done
 
 # ----------------------------------------------------------------
-# Section 7: Variable name contract (inbound ports / paths / Reality keys)
+# Variable name contract (inbound ports / paths / Reality keys)
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 7: Variable name contract ---"
@@ -224,7 +229,7 @@ assert_not_grep_in_file '\bprivate_key=' "$f" "$f does NOT use private_key"
 assert_not_grep_in_file '\bpublic_key=' "$f" "$f does NOT use public_key"
 
 # ----------------------------------------------------------------
-# Section 8: _TEST_MODE mechanism
+# _TEST_MODE mechanism
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 8: _TEST_MODE mechanism ---"
@@ -233,7 +238,7 @@ assert_grep_in_file '\[\[ "\$\{_TEST_MODE:-0\}" == "1" \]\] && return 0' "${INST
     "_TEST_MODE=1 returns early (skips main menu)"
 
 # ----------------------------------------------------------------
-# Section 9: ip_check variable contract
+# ip_check variable contract
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 9: ip_check variable contract ---"
@@ -248,7 +253,7 @@ for f in "${SKILL_REPO_ROOT}/assets/setup-reality.sh" "${SKILL_REPO_ROOT}/assets
 done
 
 # ----------------------------------------------------------------
-# Section 10: Shell syntax check on templates
+# Shell syntax check on templates
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 10: Shell syntax check ---"
@@ -261,7 +266,7 @@ for f in "${SKILL_REPO_ROOT}/assets/setup-reality.sh" "${SKILL_REPO_ROOT}/assets
 done
 
 # ----------------------------------------------------------------
-# Section 11: parse_reality_public_key helper exists
+# parse_reality_public_key helper exists
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 11: parse_reality_public_key helper ---"
@@ -269,7 +274,7 @@ assert_grep_in_file 'parse_reality_public_key\(\)' "${INSTALL_SH}" \
     "install.sh defines parse_reality_public_key helper"
 
 # ----------------------------------------------------------------
-# Section 12: JSON field contract and parseability (Task D, Section 8.4)
+# JSON field contract and parseability
 # Verify that JSON field names used by update_json_config in install.sh
 # are consistent with Skill template documentation, and that a mock
 # install_config.json with those fields parses with jq.

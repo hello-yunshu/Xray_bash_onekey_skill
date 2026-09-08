@@ -30,13 +30,14 @@ Core technology: Uses install.sh's built-in `_TEST_MODE=1` mechanism. After sour
 **Inappropriate scenarios**:
 - Server is not Linux (Windows/macOS not supported)
 - Need fine-grained custom configuration beyond the 4 modes
-- Already have a working Xray setup (use `idleleo` management command instead)
+- Already have a working Xray setup — Skill templates refuse to proceed when an existing installation is detected; use `idleleo` management command on the server for reconfiguration, mode changes, or clean installs
 
 ## Project Overview
 
-**Xray_bash_onekey** (v2.12.10+) — one-click Xray installation and management script:
+**Xray_bash_onekey** — one-click Xray installation and management script:
 
 - **4 installation modes**: Reality, TLS (Nginx+ws/gRPC/xHTTP), ws/gRPC/xHTTP ONLY, XTLS ONLY
+- **Auto-deployment templates**: Reality and TLS (other modes can be set up via `idleleo` on the server)
 - **3 transport protocols**: WebSocket, gRPC, xHTTP (can be combined)
 - **Target systems**: Debian 12+ / Ubuntu 24.04+ / CentOS Stream 10+
 - **Main script**: `install.sh` | **Management command**: `idleleo`
@@ -55,7 +56,7 @@ Before generating any deployment script, verify these prerequisites. If any chec
 | 1 | **OS compatible** | `cat /etc/os-release` | Must be Debian 12+ / Ubuntu 24.04+ / CentOS Stream 10+ |
 | 2 | **Architecture** | `uname -m` | Must be x86_64 or aarch64 |
 | 3 | **Root access** | `id -u` | Must be 0 (root) |
-| 4 | **Port available** | `ss -tlnp \| grep <port>` | Kill conflicting process or choose different port |
+| 4 | **Port available** | `ss -tlnp \| grep <port>` | Port occupied by third-party service: do NOT stop it; choose a different port. Only stop if confirmed to belong to this project and user explicitly agrees |
 | 5 | **GitHub reachable** | `curl -I https://github.com` | Fix DNS or network, cannot proceed without |
 | 6 | **DNS resolves** (TLS only) | `dig +short <domain>` | Must point to server IP, wait for propagation |
 
@@ -136,6 +137,7 @@ For detailed mode call chains and variable references, see `references/modes.md`
 
 #### Critical Rules for Script Generation
 
+- **New installations only**: Skill templates only support new installations. If `/etc/idleleo/conf/install_config.json` already exists, the template refuses to proceed (regardless of any mode setting) and directs the user to run `idleleo` on the server. There is no bypass — reinstall, mode change, and clean install must all be done via `idleleo`, which provides verified transactional reconfiguration with backup and rollback.
 - Set `old_config_status="off"` to skip all old-config-related interactions
 - Override `firewall_set` as no-op — user can configure later via `idleleo`
 - `keys_set` override must still call `${xray_bin_dir}/xray x25519` — keys cannot be pre-set. Use the project's `parse_reality_public_key` helper to handle Xray version differences. Variables are `privateKey` (camelCase) and `password` (which holds the public key), NOT `private_key`/`public_key`. **Do NOT echo `privateKey` or `password` to stdout — they are secrets.**
@@ -152,7 +154,7 @@ For detailed mode call chains and variable references, see `references/modes.md`
 - `xray_reality_add_more_choose` override must set `reality_add_more` (NOT `add_more`) and `transport_mode` (NOT `ws_grpc_mode`) — these are the correct variable names in install.sh
 - **Secret redaction**: Templates must NOT output `privateKey`, `password`, `shortIds`, `UUID` values, or the full `install_config.json` to stdout/stderr. Use `safe_print_config_summary` from `.github/test/redact.sh` for safe diagnostics. For `journalctl` output, pipe through `redact_text_for_diagnostics`.
 - **Syntax check**: After downloading `install.sh`, always run `bash -n "$INSTALL_SH"` before sourcing it to catch syntax errors early.
-- **Ref pinning**: Templates support pinning to a specific commit SHA via the `INSTALL_SH_REF` environment variable (default: `main`). Using a commit SHA provides immutability for reproducible deployments.
+- **Release pinning**: Production templates read `shell_online_version` and `shell_release_sha256` from the API metadata, then download `install.sh` from the matching immutable GitHub Release and verify its SHA-256. `XRAY_INSTALL_URL` is reserved for explicit developer/local testing and is never inferred.
 
 #### Template Scripts
 

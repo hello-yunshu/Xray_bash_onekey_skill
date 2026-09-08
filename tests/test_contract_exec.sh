@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Xray_bash_onekey_skill — Execution-Type Contract Test for P0-D
+# Xray_bash_onekey_skill — Execution-type contract tests
 #
 # Verifies that Skill templates use the correct variable names and do NOT
 # leak secrets. Unlike the static contract test, this test sources the
@@ -61,7 +61,7 @@ echo "============================================================"
 echo ""
 
 # ----------------------------------------------------------------
-# Section 1: Verify install.sh exists locally
+# Verify install.sh exists locally
 # ----------------------------------------------------------------
 echo "--- Section 1: install.sh availability ---"
 if [[ ! -f "${INSTALL_SH}" ]]; then
@@ -71,7 +71,7 @@ fi
 ok "install.sh exists locally at ${INSTALL_SH}"
 
 # ----------------------------------------------------------------
-# Section 2: Source install.sh with _TEST_MODE=1 in a subshell
+# Source install.sh with _TEST_MODE=1 in a subshell
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 2: Source install.sh with _TEST_MODE=1 ---"
@@ -310,7 +310,7 @@ fi
 rm -f "${WRAPPER_SCRIPT}"
 
 # ----------------------------------------------------------------
-# Section 3: Static grep checks for variable names in templates
+# Static grep checks for variable names in templates
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 9: Static variable name checks in templates ---"
@@ -361,7 +361,7 @@ assert_not_grep_in_file_reality '\badd_more="off"' "setup-reality.sh does NOT us
 assert_not_grep_in_file_reality '\bws_grpc_mode=' "setup-reality.sh does NOT use ws_grpc_mode (deprecated)"
 
 # ----------------------------------------------------------------
-# Section 4: Static grep checks for secret output in templates
+# Static grep checks for secret output in templates
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 10: Secret output checks in templates ---"
@@ -409,11 +409,12 @@ for f in "${SKILL_REPO_ROOT}/assets/setup-reality.sh" "${SKILL_REPO_ROOT}/assets
     else
         bad "$(basename "$f") has bash -n syntax check (missing)"
     fi
-    # Templates MUST support INSTALL_SH_REF for ref pinning
-    if grep -qE 'INSTALL_SH_REF' "$f" 2>/dev/null; then
-        ok "$(basename "$f") supports INSTALL_SH_REF for ref pinning"
+    # Production templates MUST resolve the immutable Release asset.
+    if grep -qE 'releases/download/v\$\{XRAY_VERSION\}/install\.sh' "$f" \
+        && grep -qE 'shell_release_sha256|SHA256SUMS' "$f"; then
+        ok "$(basename "$f") resolves an immutable Xray Release with SHA-256"
     else
-        bad "$(basename "$f") supports INSTALL_SH_REF for ref pinning (missing)"
+        bad "$(basename "$f") resolves an immutable Xray Release with SHA-256 (missing)"
     fi
     # Templates MUST use safe_print_config_summary or jq summary (NOT cat)
     if grep -qE 'safe_print_config_summary|jq\s+-r' "$f" 2>/dev/null; then
@@ -424,7 +425,7 @@ for f in "${SKILL_REPO_ROOT}/assets/setup-reality.sh" "${SKILL_REPO_ROOT}/assets
 done
 
 # ----------------------------------------------------------------
-# Section 5: Shell syntax check on templates
+# Shell syntax check on templates
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 11: Shell syntax check ---"
@@ -437,7 +438,7 @@ for f in "${SKILL_REPO_ROOT}/assets/setup-reality.sh" "${SKILL_REPO_ROOT}/assets
 done
 
 # ----------------------------------------------------------------
-# Section 6: Documentation checks — ensure docs use correct variable names
+# Documentation checks — ensure docs use correct variable names
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 12: Documentation variable name checks ---"
@@ -488,13 +489,13 @@ else
 fi
 
 # ----------------------------------------------------------------
-# Section 7: Full content leak scan — run template functions and
+# Full content leak scan — run template functions and
 # verify stdout/stderr does not contain test secrets
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 13: Full content leak scan ---"
-# This test is already done in Section 7 of the wrapper script above.
-# Here we do an additional static check: grep for common secret-leak patterns.
+# The leak scan above already validates template output; here we also statically
+# grep template sources for patterns that echo secrets directly.
 for f in "${SKILL_REPO_ROOT}/assets/setup-reality.sh" "${SKILL_REPO_ROOT}/assets/setup-tls.sh"; do
     # Check for echo statements that output secret variables directly
     # Pattern: echo ... $privateKey or echo ... ${privateKey}
@@ -521,7 +522,7 @@ for f in "${SKILL_REPO_ROOT}/assets/setup-reality.sh" "${SKILL_REPO_ROOT}/assets
 done
 
 # ----------------------------------------------------------------
-# Section 8: Verify original contract tests still pass
+# Verify original contract tests still pass
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 14: Original contract tests still pass ---"
@@ -532,14 +533,15 @@ else
 fi
 
 # ----------------------------------------------------------------
-# Section 9: Fail-closed verification scenarios (Scenarios 3-9)
+# Fail-closed verification scenarios (Scenarios 3-9)
 #   3. Xray inactive → returns non-zero
 #   4. TLS Nginx inactive → returns non-zero
 #   5. Config missing → returns non-zero
 #   6. Config JSON corrupted → returns non-zero
 #   7. Reality config uses `.id` → validation succeeds
-#   8. Existing install + no FORCE_REINSTALL=1 → reject + file unchanged
-#   9. FORCE_REINSTALL=1 → can enter install flow
+#   8. Existing install + INSTALL_MODE=NEW_INSTALL → reject + file unchanged
+#   9. Existing install + CLEAN_INSTALL + CONFIRM_CLEAN_INSTALL=1 → reject (no bypass)
+#  10. Existing install + INSTALL_MODE=anything → reject (always)
 # ----------------------------------------------------------------
 echo ""
 echo "--- Section 15: Fail-closed verification scenarios ---"
@@ -670,32 +672,32 @@ run_tls_verify() {
 
 case "${SCENARIO}" in
     xray_inactive)
-        # Scenario 3: Xray inactive → Reality verify fails
+        # Xray inactive → Reality verify fails
         run_reality_verify
         exit $?
         ;;
     reality_xray_inactive)
-        # Scenario 3 variant: Xray inactive → Reality verify fails (explicit)
+        # Variant: Xray inactive → Reality verify fails (explicit)
         run_reality_verify
         exit $?
         ;;
     nginx_inactive)
-        # Scenario 4: TLS Nginx inactive → TLS verify fails
+        # TLS Nginx inactive → TLS verify fails
         run_tls_verify
         exit $?
         ;;
     config_missing)
-        # Scenario 5: Config missing → Reality verify fails
+        # Config missing → Reality verify fails
         run_reality_verify
         exit $?
         ;;
     config_corrupted)
-        # Scenario 6: Config JSON corrupted → verify fails
+        # Config JSON corrupted → verify fails
         run_reality_verify
         exit $?
         ;;
     reality_id_ok)
-        # Scenario 7: Reality config uses .id → validation succeeds
+        # Reality config uses .id → validation succeeds
         run_reality_verify
         exit $?
         ;;
@@ -723,7 +725,7 @@ run_verify_scenario() {
     return ${rc}
 }
 
-# --- Scenario 3: Xray inactive → verification fails ---
+# --- Xray inactive → verification fails ---
 echo "  --- Scenario 3: Xray inactive → verify fails ---"
 VALID_CONFIG="${VERIFY_TMP_DIR}/valid_reality.json"
 cat > "${VALID_CONFIG}" << 'JSON_EOF'
@@ -737,7 +739,7 @@ else
     bad "Scenario 3: Xray inactive → verify should return non-zero but got 0"
 fi
 
-# --- Scenario 4: TLS Nginx inactive → verification fails ---
+# --- TLS Nginx inactive → verification fails ---
 echo "  --- Scenario 4: TLS Nginx inactive → verify fails ---"
 TLS_CONFIG="${VERIFY_TMP_DIR}/valid_tls.json"
 cat > "${TLS_CONFIG}" << 'JSON_EOF'
@@ -752,7 +754,7 @@ else
     bad "Scenario 4: TLS Nginx inactive → verify should return non-zero but got 0"
 fi
 
-# --- Scenario 5: Config missing → verification fails ---
+# --- Config missing → verification fails ---
 echo "  --- Scenario 5: Config missing → verify fails ---"
 # Use systemctl default (both active) but config file doesn't exist
 MISSING_CONFIG="${VERIFY_TMP_DIR}/nonexistent.json"
@@ -764,7 +766,7 @@ else
     bad "Scenario 5: Config missing → verify should return non-zero but got 0"
 fi
 
-# --- Scenario 6: Config JSON corrupted → verification fails ---
+# --- Config JSON corrupted → verification fails ---
 echo "  --- Scenario 6: Config JSON corrupted → verify fails ---"
 CORRUPT_CONFIG="${VERIFY_TMP_DIR}/corrupt.json"
 echo '{"tls":"Reality","id":"broken' > "${CORRUPT_CONFIG}"
@@ -776,7 +778,7 @@ else
     bad "Scenario 6: Config JSON corrupted → verify should return non-zero but got 0"
 fi
 
-# --- Scenario 7: Reality config uses `.id` (not UUID) → validation succeeds ---
+# --- Reality config uses `.id` (not UUID) → validation succeeds ---
 echo "  --- Scenario 7: Reality config uses .id → validation succeeds ---"
 ID_CONFIG="${VERIFY_TMP_DIR}/id_only.json"
 cat > "${ID_CONFIG}" << 'JSON_EOF'
@@ -820,22 +822,23 @@ else
     bad "Scenario 7c: Config with neither .id nor .UUID → verify should fail but got 0"
 fi
 
-# --- Scenario 8: Existing install + no FORCE_REINSTALL=1 → reject + file unchanged ---
-echo "  --- Scenario 8: Existing install + no FORCE_REINSTALL → reject ---"
+# --- Existing install + INSTALL_MODE=NEW_INSTALL → reject + file unchanged ---
+echo "  --- Scenario 8: Existing install + INSTALL_MODE=NEW_INSTALL → reject ---"
 EXISTING_CONFIG="${VERIFY_TMP_DIR}/existing.json"
 echo '{"tls":"Reality","id":"existing"}' > "${EXISTING_CONFIG}"
 EXISTING_HASH_BEFORE=$(md5sum "${EXISTING_CONFIG}" 2>/dev/null | awk '{print $1}')
-# Simulate the guard logic from setup-reality.sh / setup-tls.sh
-FORCE_REINSTALL="0"
+# Simulate the simplified guard logic from setup-reality.sh / setup-tls.sh:
+# any existing installation is rejected regardless of INSTALL_MODE.
+INSTALL_MODE="NEW_INSTALL"
 guard_rejected=0
-if [[ -f "${EXISTING_CONFIG}" && "${FORCE_REINSTALL}" != "1" ]]; then
+if [[ -f "${EXISTING_CONFIG}" ]]; then
     guard_rejected=1
 fi
 EXISTING_HASH_AFTER=$(md5sum "${EXISTING_CONFIG}" 2>/dev/null | awk '{print $1}')
 if [[ ${guard_rejected} -eq 1 ]]; then
-    ok "Scenario 8: Existing install + no FORCE_REINSTALL → guard rejects"
+    ok "Scenario 8: Existing install + INSTALL_MODE=NEW_INSTALL → guard rejects"
 else
-    bad "Scenario 8: Existing install + no FORCE_REINSTALL → guard should reject"
+    bad "Scenario 8: Existing install + INSTALL_MODE=NEW_INSTALL → guard should reject"
 fi
 if [[ "${EXISTING_HASH_BEFORE}" == "${EXISTING_HASH_AFTER}" ]]; then
     ok "Scenario 8: Config file unchanged after guard rejection"
@@ -843,19 +846,31 @@ else
     bad "Scenario 8: Config file was modified after guard rejection"
 fi
 
-# --- Scenario 9: FORCE_REINSTALL=1 → can enter install flow ---
-echo "  --- Scenario 9: FORCE_REINSTALL=1 → guard allows install ---"
-FORCE_REINSTALL="1"
-guard_allows=0
-if [[ -f "${EXISTING_CONFIG}" && "${FORCE_REINSTALL}" != "1" ]]; then
-    guard_allows=0  # would reject
-else
-    guard_allows=1  # proceeds
+# --- Existing install + CLEAN_INSTALL + CONFIRM_CLEAN_INSTALL=1 → reject ---
+echo "  --- Scenario 9: Existing install + CLEAN_INSTALL + CONFIRM → reject ---"
+INSTALL_MODE="CLEAN_INSTALL"
+CONFIRM_CLEAN_INSTALL="1"
+guard_rejected=0
+if [[ -f "${EXISTING_CONFIG}" ]]; then
+    guard_rejected=1
 fi
-if [[ ${guard_allows} -eq 1 ]]; then
-    ok "Scenario 9: FORCE_REINSTALL=1 → guard allows install flow"
+if [[ ${guard_rejected} -eq 1 ]]; then
+    ok "Scenario 9: Existing install + CLEAN_INSTALL + CONFIRM → guard rejects (no bypass)"
 else
-    bad "Scenario 9: FORCE_REINSTALL=1 → guard should allow install flow"
+    bad "Scenario 9: Existing install + CLEAN_INSTALL + CONFIRM → guard should reject"
+fi
+
+# --- Existing install + INSTALL_MODE=anything → reject ---
+echo "  --- Scenario 10: Existing install + INSTALL_MODE=anything → reject ---"
+INSTALL_MODE="some-random-mode"
+guard_rejected=0
+if [[ -f "${EXISTING_CONFIG}" ]]; then
+    guard_rejected=1
+fi
+if [[ ${guard_rejected} -eq 1 ]]; then
+    ok "Scenario 10: Existing install + any INSTALL_MODE → guard rejects"
+else
+    bad "Scenario 10: Existing install + any INSTALL_MODE → guard should reject"
 fi
 
 rm -rf "${VERIFY_WRAPPER}" "${VERIFY_TMP_DIR}"
