@@ -7,7 +7,7 @@
 #   2. Replace all <PLACEHOLDER> values with actual user preferences
 #   3. Adjust override functions if the source has changed
 #
-# Contract-verified against install.sh v2.12.10+:
+# Contract-verified against install.sh (read actual install.sh before use):
 #   - install_config.json path: /etc/idleleo/conf/install_config.json (NOT /etc/idleleo/info/)
 #   - Nginx binary path: /usr/local/nginx/sbin/nginx
 #   - UUIDv5_tranc requires an argument (random UUIDv5 char string)
@@ -33,20 +33,25 @@ SERVERNAMES="www.microsoft.com"
 EMAIL="auto@reality-setup"
 UUID=""  # Leave empty for auto-generation
 
-# Optional: pin to a specific install.sh ref/commit (default: main)
-# Using a commit SHA provides immutability; using main always fetches the latest.
-INSTALL_SH_REF="${INSTALL_SH_REF:-main}"
+# Production installs resolve the API-published Xray Release. A developer may
+# explicitly provide XRAY_INSTALL_URL for local testing; it is never inferred.
+XRAY_VERSION="${XRAY_VERSION:-}"
+XRAY_INSTALL_URL="${XRAY_INSTALL_URL:-}"
 
 # ============================================================
 # Guard against overwriting an existing installation
 # ============================================================
 
 CONFIG_FILE="/etc/idleleo/conf/install_config.json"
-FORCE_REINSTALL="${FORCE_REINSTALL:-0}"
 
-if [[ -f "${CONFIG_FILE}" && "${FORCE_REINSTALL}" != "1" ]]; then
+# Skill templates only support new installations. For any existing
+# installation (regardless of INSTALL_MODE), refuse and direct the user
+# to run 'idleleo' on the server for safe reconfiguration.
+if [[ -f "${CONFIG_FILE}" ]]; then
     echo "❌ Existing installation detected at ${CONFIG_FILE}"
-    echo "Set FORCE_REINSTALL=1 only when replacement is intentional."
+    echo "Skill templates only support new installations."
+    echo "To reinstall, change mode, or clean install, run 'idleleo' on the server."
+    echo "The main script provides verified transactional reconfiguration with backup and rollback."
     exit 1
 fi
 
@@ -54,11 +59,29 @@ fi
 # Download and source install.sh
 # ============================================================
 
-INSTALL_SH_URL="https://raw.githubusercontent.com/hello-yunshu/Xray_bash_onekey/${INSTALL_SH_REF}/install.sh"
+API_URL="https://raw.githubusercontent.com/hello-yunshu/Xray_bash_onekey_api/main/xray_shell_versions.json"
 INSTALL_SH="/tmp/xray_install_$$.sh"
 
-echo "[1/6] Downloading install.sh (ref: ${INSTALL_SH_REF})..."
+if [[ -n "${XRAY_INSTALL_URL}" ]]; then
+    INSTALL_SH_URL="${XRAY_INSTALL_URL}"
+    EXPECTED_SHA256=""
+else
+    API_JSON=$(curl -fsSL "${API_URL}")
+    XRAY_VERSION="${XRAY_VERSION:-$(printf '%s' "${API_JSON}" | jq -r '.shell_online_version')}"
+    EXPECTED_SHA256="$(printf '%s' "${API_JSON}" | jq -r '.shell_release_sha256 // empty')"
+    if [[ -z "${EXPECTED_SHA256}" && -n "${XRAY_VERSION}" ]]; then
+        SUMS_URL="https://github.com/hello-yunshu/Xray_bash_onekey/releases/download/v${XRAY_VERSION}/SHA256SUMS"
+        EXPECTED_SHA256=$(curl -fsSL "${SUMS_URL}" | awk '$2 == "install.sh" || $2 == "*install.sh" {print $1; exit}')
+    fi
+    INSTALL_SH_URL="https://github.com/hello-yunshu/Xray_bash_onekey/releases/download/v${XRAY_VERSION}/install.sh"
+fi
+[[ "${XRAY_VERSION:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || -n "${XRAY_INSTALL_URL}" ]] || { echo 'Invalid Xray Release version'; exit 1; }
+echo "[1/6] Downloading Xray Release v${XRAY_VERSION} install.sh..."
 curl -fsSL "${INSTALL_SH_URL}" -o "${INSTALL_SH}"
+if [[ -n "${EXPECTED_SHA256:-}" ]]; then
+    ACTUAL_SHA256=$(sha256sum "${INSTALL_SH}" | awk '{print $1}')
+    [[ "${ACTUAL_SHA256}" == "${EXPECTED_SHA256}" ]] || { echo 'install.sh SHA-256 mismatch'; rm -f "${INSTALL_SH}"; exit 1; }
+fi
 
 echo "[2/6] Syntax-checking install.sh (bash -n)..."
 if ! bash -n "${INSTALL_SH}"; then
@@ -77,10 +100,8 @@ source "${INSTALL_SH}"
 # ============================================================
 
 old_config_exist_check() {
-    if [[ -f "${CONFIG_FILE}" && "${FORCE_REINSTALL}" != "1" ]]; then
-        echo "❌ Existing installation detected; refusing to overwrite."
-        return 1
-    fi
+    # The guard block above already rejected any existing installation.
+    # If we reach here, no installation exists.
     old_config_status="off"
 }
 
@@ -270,7 +291,7 @@ if [[ -f "${CONFIG_FILE}" ]]; then
             "  transport_mode: \(.transport_mode // "unknown")",
             "  shell_version: \(.shell_version // "unknown")",
             "  xray_version: \(.xray_version // "unknown")",
-            "  has_UUID: \(.UUID // .uuid | type == "string")",
+            "  has_UUID: \(.id // .UUID // .uuid | type == "string")",
             "  has_privateKey: \(.privateKey | type == "string")",
             "  has_publicKey: \(.publicKey // .password | type == "string")",
             "  has_shortIds: \(.shortIds | type == "string")",
