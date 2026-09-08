@@ -67,15 +67,22 @@ if [[ -n "${XRAY_INSTALL_URL}" ]]; then
     EXPECTED_SHA256=""
 else
     API_JSON=$(curl -fsSL "${API_URL}")
-    XRAY_VERSION="${XRAY_VERSION:-$(printf '%s' "${API_JSON}" | jq -r '.shell_online_version')}"
-    EXPECTED_SHA256="$(printf '%s' "${API_JSON}" | jq -r '.shell_release_sha256 // empty')"
-    if [[ -z "${EXPECTED_SHA256}" && -n "${XRAY_VERSION}" ]]; then
+    API_SHELL_VERSION="$(printf '%s' "${API_JSON}" | jq -r '.shell_online_version // empty')"
+    API_SHELL_SHA256="$(printf '%s' "${API_JSON}" | jq -r '.shell_release_sha256 // empty')"
+    XRAY_VERSION="${XRAY_VERSION:-${API_SHELL_VERSION}}"
+    if [[ "${XRAY_VERSION}" == "${API_SHELL_VERSION}" ]]; then
+        EXPECTED_SHA256="${API_SHELL_SHA256}"
+    else
         SUMS_URL="https://github.com/hello-yunshu/Xray_bash_onekey/releases/download/v${XRAY_VERSION}/SHA256SUMS"
         EXPECTED_SHA256=$(curl -fsSL "${SUMS_URL}" | awk '$2 == "install.sh" || $2 == "*install.sh" {print $1; exit}')
     fi
     INSTALL_SH_URL="https://github.com/hello-yunshu/Xray_bash_onekey/releases/download/v${XRAY_VERSION}/install.sh"
 fi
 [[ "${XRAY_VERSION:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || -n "${XRAY_INSTALL_URL}" ]] || { echo 'Invalid Xray Release version'; exit 1; }
+if [[ -z "${XRAY_INSTALL_URL}" && ! "${EXPECTED_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "Missing or invalid SHA-256 for Xray Release v${XRAY_VERSION}" >&2
+    exit 1
+fi
 echo "[1/6] Downloading Xray Release v${XRAY_VERSION} install.sh..."
 curl -fsSL "${INSTALL_SH_URL}" -o "${INSTALL_SH}"
 if [[ -n "${EXPECTED_SHA256:-}" ]]; then
