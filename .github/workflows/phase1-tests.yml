@@ -40,6 +40,7 @@ jobs:
           bash -n tests/test_contract.sh
           bash -n tests/test_contract_exec.sh
           bash -n tests/test_full_flow_noninteractive.sh
+          bash -n tests/test_release_sha_selection.sh
           shellcheck -S error \
             assets/setup-reality.sh \
             assets/setup-tls.sh \
@@ -55,3 +56,4 @@ jobs:
           bash tests/test_contract.sh
           bash tests/test_contract_exec.sh
           bash tests/test_full_flow_noninteractive.sh
+          bash tests/test_release_sha_selection.sh
