@@ -154,7 +154,7 @@ For detailed mode call chains and variable references, see `references/modes.md`
 - `xray_reality_add_more_choose` override must set `reality_add_more` (NOT `add_more`) and `transport_mode` (NOT `ws_grpc_mode`) — these are the correct variable names in install.sh
 - **Secret redaction**: Templates must NOT output `privateKey`, `password`, `shortIds`, `UUID` values, or the full `install_config.json` to stdout/stderr. Use `safe_print_config_summary` from `.github/test/redact.sh` for safe diagnostics. For `journalctl` output, pipe through `redact_text_for_diagnostics`.
 - **Syntax check**: After downloading `install.sh`, always run `bash -n "$INSTALL_SH"` before sourcing it to catch syntax errors early.
-- **Ref pinning**: Templates support pinning to a specific commit SHA via the `INSTALL_SH_REF` environment variable (default: `main`). Using a commit SHA provides immutability for reproducible deployments.
+- **Release pinning**: Production templates read `shell_online_version` and `shell_release_sha256` from the API metadata, then download `install.sh` from the matching immutable GitHub Release and verify its SHA-256. `XRAY_INSTALL_URL` is reserved for explicit developer/local testing and is never inferred.
 
 #### Template Scripts
 

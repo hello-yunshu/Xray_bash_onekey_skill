@@ -68,7 +68,12 @@ echo "--- Section 1: install.sh availability ---"
 if [[ ! -f "${INSTALL_SH}" ]]; then
     echo "  install.sh not found locally, fetching from GitHub..."
     INSTALL_SH="/tmp/install.sh.contract.$$"
-    if ! curl -fsSL "https://raw.githubusercontent.com/hello-yunshu/Xray_bash_onekey/main/install.sh" -o "${INSTALL_SH}"; then
+    API_JSON=$(curl -fsSL "https://raw.githubusercontent.com/hello-yunshu/Xray_bash_onekey_api/main/xray_shell_versions.json") || {
+        echo "  ❌ Cannot fetch Xray API metadata from GitHub. Aborting."
+        exit 1
+    }
+    XRAY_VERSION=$(printf '%s' "${API_JSON}" | jq -r '.shell_online_version')
+    if ! curl -fsSL "https://github.com/hello-yunshu/Xray_bash_onekey/releases/download/v${XRAY_VERSION}/install.sh" -o "${INSTALL_SH}"; then
         echo "  ❌ Cannot fetch install.sh from GitHub. Aborting."
         exit 1
     fi
