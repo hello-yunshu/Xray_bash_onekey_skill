@@ -409,11 +409,12 @@ for f in "${SKILL_REPO_ROOT}/assets/setup-reality.sh" "${SKILL_REPO_ROOT}/assets
     else
         bad "$(basename "$f") has bash -n syntax check (missing)"
     fi
-    # Templates MUST support INSTALL_SH_REF for ref pinning
-    if grep -qE 'INSTALL_SH_REF' "$f" 2>/dev/null; then
-        ok "$(basename "$f") supports INSTALL_SH_REF for ref pinning"
+    # Production templates MUST resolve the immutable Release asset.
+    if grep -qE 'releases/download/v\$\{XRAY_VERSION\}/install\.sh' "$f" \
+        && grep -qE 'shell_release_sha256|SHA256SUMS' "$f"; then
+        ok "$(basename "$f") resolves an immutable Xray Release with SHA-256"
     else
-        bad "$(basename "$f") supports INSTALL_SH_REF for ref pinning (missing)"
+        bad "$(basename "$f") resolves an immutable Xray Release with SHA-256 (missing)"
     fi
     # Templates MUST use safe_print_config_summary or jq summary (NOT cat)
     if grep -qE 'safe_print_config_summary|jq\s+-r' "$f" 2>/dev/null; then
